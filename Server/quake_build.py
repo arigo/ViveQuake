@@ -8,10 +8,8 @@ import cffi
 ffibuilder = cffi.FFI()
 
 ffibuilder.cdef("""
-    extern "Python" void PQuake_frame_update(void);
-
-    void PQuake_main(int c, char **v);
-
+    void PQuake_Ready(int c, char **v);
+    void Host_Frame(float frame_time);
 
     #define DEF_SAVEGLOBAL ...
     enum {ev_void, ev_string, ev_float, ev_vector, ev_entity, ev_field,
@@ -28,9 +26,15 @@ ffibuilder.cdef("""
         int s_name;
     } ddef_t;
 
+    typedef struct {
+        int num_edicts;
+        ...;
+    } server_t;
+
     dprograms_t *progs;
     ddef_t *pr_fielddefs, *pr_globaldefs;
     char *pr_strings;
+    server_t sv;
 
     typedef int string_t;
     typedef int func_t;
@@ -45,10 +49,11 @@ ffibuilder.cdef("""
     } eval_t;
 
     eval_t *get_edict_field(int eindex, int fieldindex);
+    void exit(int);
 """)
 
-ffibuilder.set_source("_quake", """
-    #define main  PQuake_main
+ffibuilder.set_source("_quake", r"""
+    #define main  PQuake_main   /* never actually called */
     #include "src/sys_null.c"
 
     vec3_t vpn, vright, vup;
@@ -156,18 +161,29 @@ ffibuilder.set_source("_quake", """
     void CL_Init(void) { }
     void CL_SendCmd(void) { }
     void CL_StopPlayback(void) { }
-
-    static void PQuake_frame_update(void);
-
-    void SCR_UpdateScreen(void)
-    {
-        PQuake_frame_update();
-    }
+    void SCR_UpdateScreen(void) { }
 
     eval_t *get_edict_field(int eindex, int fieldindex)
     {
-        edict_t *ed = PROG_TO_EDICT(eindex);
+        edict_t *ed = EDICT_NUM(eindex);
         return (eval_t *)((int *)&ed->v + fieldindex);
+    }
+
+    void PQuake_Ready(int argc, char **argv)
+    {
+        static quakeparms_t    parms;
+
+        parms.memsize = 8*1024*1024;
+        parms.membase = malloc (parms.memsize);
+        parms.basedir = ".";
+
+        COM_InitArgv (argc, argv);
+
+        parms.argc = com_argc;
+        parms.argv = com_argv;
+
+        printf ("Host_Init\n");
+        Host_Init (&parms);
     }
 """,
     sources='''
