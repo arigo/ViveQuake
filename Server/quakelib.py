@@ -94,26 +94,28 @@ def initialize():
 
 
 class QuakeServer(object):
-    debug_init = False
 
-    def __init__(self, args):
+    def __init__(self, args, debug_init=False):
         args = [sys.executable] + args
         self.argv = [ffi.new("char[]", a) for a in args]
         self.argv_list = ffi.new("char *[]", self.argv)
         lib.PQuake_Ready(len(self.argv), self.argv_list)
         self.prev_time = time.time()
         self.initialized = False
+        for i in range(30):
+            self.host_frame(0.1)
+            if lib.progs != ffi.NULL:
+                break
+        else:
+            raise RuntimeError("Quake does not start a map (args=%r)" %
+                               (args[1:],))
+        initialize()
 
-    def host_frame(self):
-        if not self.initialized and lib.progs != ffi.NULL:
-            initialize()
-            if self.debug_init:
-                import pdb; pdb.set_trace()
-            self.initialized = True
+    def host_frame(self, forced_delay=None):
         next_time = time.time()
         delay = next_time - self.prev_time
         self.prev_time = next_time
-        lib.Host_Frame(delay)
+        lib.Host_Frame(forced_delay or delay)
 
     def get_level_model_name(self):
         res = Edict(0).model
@@ -128,8 +130,8 @@ class QuakeServer(object):
 
 
 if __name__ == "__main__":
-    srv = QuakeServer(["+map", "e1m1"])
-    srv.debug_init = True
+    srv = QuakeServer(sys.argv[1:])
+    import pdb;pdb.set_trace()
     while True:
-        srv.host_frame()
         time.sleep(0.1)
+        srv.host_frame()
