@@ -8,11 +8,47 @@ import cffi
 ffibuilder = cffi.FFI()
 
 ffibuilder.cdef("""
-    void quake_main(int c, char **v);
+    extern "Python" void PQuake_frame_update(void);
+
+    void PQuake_main(int c, char **v);
+
+
+    #define DEF_SAVEGLOBAL ...
+    enum {ev_void, ev_string, ev_float, ev_vector, ev_entity, ev_field,
+          ev_function, ev_pointer, ...};
+
+    typedef struct {
+        int numfielddefs, numglobaldefs;
+        ...;
+    } dprograms_t;
+
+    typedef struct {
+        unsigned short type;
+        unsigned short ofs;
+        int s_name;
+    } ddef_t;
+
+    dprograms_t *progs;
+    ddef_t *pr_fielddefs, *pr_globaldefs;
+    char *pr_strings;
+
+    typedef int string_t;
+    typedef int func_t;
+
+    typedef union {
+        string_t		string;
+        float			_float;
+        float			vector[3];
+        func_t			function;
+        int				_int;
+        int				edict;
+    } eval_t;
+
+    eval_t *get_edict_field(int eindex, int fieldindex);
 """)
 
 ffibuilder.set_source("_quake", """
-    #define main  quake_main
+    #define main  PQuake_main
     #include "src/sys_null.c"
 
     vec3_t vpn, vright, vup;
@@ -106,7 +142,6 @@ ffibuilder.set_source("_quake", """
     void V_StopPitchDrift(void) { }
     void Sbar_Init(void) { }
     void SCR_Init(void) { }
-    void SCR_UpdateScreen(void) { }
     void SCR_BeginLoadingPlaque(void) { }
     void SCR_EndLoadingPlaque(void) { }
     void Draw_Init(void) { }
@@ -121,6 +156,19 @@ ffibuilder.set_source("_quake", """
     void CL_Init(void) { }
     void CL_SendCmd(void) { }
     void CL_StopPlayback(void) { }
+
+    static void PQuake_frame_update(void);
+
+    void SCR_UpdateScreen(void)
+    {
+        PQuake_frame_update();
+    }
+
+    eval_t *get_edict_field(int eindex, int fieldindex)
+    {
+        edict_t *ed = PROG_TO_EDICT(eindex);
+        return (eval_t *)((int *)&ed->v + fieldindex);
+    }
 """,
     sources='''
         src/common.c
