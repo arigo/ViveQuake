@@ -1,0 +1,10 @@
+ViveQuake server
+----------------
+
+Make a symlink "id1" to the Quake standard directory "id1".
+Run server.py.
+
+
+Some docs for the Quake file format:
+
+http://www.gamers.org/dEngine/quake/spec/quake-spec34/qkspec_4.htm
