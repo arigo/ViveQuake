@@ -3,6 +3,8 @@ import qdata
 import array
 
 
+VERSION = 1
+
 PAK0 = qdata.load('id1/pak0.pak')
 
 _textures_by_name = {}

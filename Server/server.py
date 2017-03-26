@@ -23,8 +23,9 @@ class Application(tornado.web.Application):
         handlers = [
             (r"/hello", HelloHandler),
             (r"/level/([A-Za-z0-9_-]+)", LevelHandler),
-            (r"/model/([A-Za-z0-9_:-]+)", ModelHandler),
+            (r"/model/([A-Za-z0-9_,-]+)", ModelHandler),
             (r"/texture/([a-z0-9]+)", TextureHandler),
+            (r"/fixed", FixedHandler),
             (r"/snapshot", SnapshotHandler),
             (r"/websock", WebSockHandler),
         ]
@@ -61,9 +62,9 @@ class HelloHandler(tornado.web.RequestHandler):
         level_name = app.srv.get_level_model_name()
         start_pos = app.srv.get_player_start_position()
         response = {
+            'version': maploader.VERSION,
             'level': level_name,
             'start_pos': maploader.map_vertex(start_pos),
-            'palette': maploader.load_palette(),
         }
         write_json_response(self, response)
 
@@ -74,10 +75,10 @@ class LevelHandler(tornado.web.RequestHandler):
 
 class ModelHandler(tornado.web.RequestHandler):
     def get(self, model_name):
-        if ':' not in model_name:
+        if ',' not in model_name:
             model = maploader.load_model(model_name)
         else:
-            level_name, model_index = model_name.split(':')
+            level_name, model_index = model_name.split(',')
             model = maploader.load_map(level_name, int(model_index))
         write_json_response(self, model)
 
@@ -85,6 +86,13 @@ class TextureHandler(tornado.web.RequestHandler):
     def get(self, texture_name):
         image = maploader.load_texture(texture_name)
         write_json_response(self, image)
+
+class FixedHandler(tornado.web.RequestHandler):
+    def get(self):
+        response = {
+            'palette': maploader.load_palette(),
+        }
+        write_json_response(self, response)
 
 class SnapshotHandler(tornado.web.RequestHandler):
     def get(self):

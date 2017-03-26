@@ -150,9 +150,9 @@ class QuakeServer(object):
                     model = ed.model[6:-4]
                 elif ed.model.startswith('*'):
                     levelname = self.get_level_model_name()
-                    model = '%s:%d' % (levelname, ed.modelindex - 1)
+                    model = '%s,%d' % (levelname, ed.modelindex - 1)
                 elif ed.model.startswith('maps/') and ed.model.endswith('.bsp'):
-                    model = ed.model[5:-4] + ':0'
+                    model = ed.model[5:-4] + ',0'
                 else:
                     print "WARNING: model missing for %r" % (ed.model,)
                     continue
