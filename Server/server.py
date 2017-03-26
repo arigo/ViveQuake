@@ -9,6 +9,7 @@ import tornado.web
 import tornado.websocket
 import tornado.escape
 from tornado.options import define, options
+from tornado.log import enable_pretty_logging
 
 import maploader
 import quakelib
@@ -113,6 +114,7 @@ class WebSockHandler(tornado.websocket.WebSocketHandler):
 
 def main():
     global app
+    enable_pretty_logging()
     #tornado.options.parse_command_line()
     app = Application()
     app.listen(options.port)
