@@ -6,6 +6,7 @@ import time
 import json
 import tornado.ioloop
 import tornado.web
+import tornado.websocket
 import tornado.escape
 from tornado.options import define, options
 
@@ -25,20 +26,28 @@ class Application(tornado.web.Application):
             (r"/model/([A-Za-z0-9_:-]+)", ModelHandler),
             (r"/texture/([a-z0-9]+)", TextureHandler),
             (r"/snapshot", SnapshotHandler),
+            (r"/websock", WebSockHandler),
         ]
         super(Application, self).__init__(handlers, static_path="static",
                                           compress_response=True)
+        self.websocks = set()
+        #
         if len(sys.argv) > 1:
             args = sys.argv[1:]
         else:
             args = ["+map", "e1m1"]
         self.srv = quakelib.QuakeServer(args)
+        #
         self.periodic_callback = tornado.ioloop.PeriodicCallback(
             self.invoke_periodic_callback, 100)     # 10 per second
         self.periodic_callback.start()
 
     def invoke_periodic_callback(self):
         self.srv.host_frame()
+        if self.websocks:
+            snapshot = self.srv.get_snapshot()
+            for ws in self.websocks:
+                ws.write_message(snapshot)
 
 
 def write_json_response(handler, response):
@@ -82,6 +91,16 @@ class SnapshotHandler(tornado.web.RequestHandler):
         snapshot = app.srv.get_snapshot()
         print time.time()
         write_json_response(self, snapshot)
+
+class WebSockHandler(tornado.websocket.WebSocketHandler):
+
+    def open(self):
+        print "opening websock"
+        app.websocks.add(self)
+
+    def on_close(self):
+        app.websocks.discard(self)
+        print "closed websock"
 
 
 def main():

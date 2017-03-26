@@ -142,6 +142,7 @@ class QuakeServer(object):
             if index <= 1:    # 0: removed or invisible edict; 1: world edict
                 continue
 
+            # XXX use sv.model_precache instead
             try:
                 model = self.model_by_index[index]
             except KeyError:
