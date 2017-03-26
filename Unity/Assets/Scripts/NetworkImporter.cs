@@ -42,6 +42,7 @@ public class Model
 [Serializable]
 public class Hello
 {
+    public int version;
     public string level;
     public Vector3 start_pos;
     public Color32[] palette;
@@ -84,31 +85,53 @@ public class NetworkImporter : MonoBehaviour {
         StartCoroutine(GetHelloWorld().GetEnumerator());
     }
 
-    IEnumerable DownloadJson(string path, object obj)
+    IEnumerable DownloadJson(string path, object obj, bool enable_cache=true)
     {
-        UnityWebRequest www = UnityWebRequest.Get("http://" + baseUrl + path);
-        yield return www.Send();
+        string rawstring = null;
+        string localPath = null;
+        bool store_cache = false;
+        Debug.Log(path);
 
-        if (www.isError)
+        if (enable_cache)
         {
-            throw new ApplicationException(path + ": " + www.error);
+            localPath = Application.persistentDataPath + "/" + level_info.version + path.Replace("/", ",");
+            if (System.IO.File.Exists(localPath))
+                rawstring = System.IO.File.ReadAllText(localPath);
+            else
+                store_cache = true;
         }
-        else
+
+        if (rawstring == null)
         {
-            string rawstring = www.downloadHandler.text;
-            JsonUtility.FromJsonOverwrite(rawstring, obj);
+            UnityWebRequest www = UnityWebRequest.Get("http://" + baseUrl + path);
+            yield return www.Send();
+            if (www.isError)
+                throw new ApplicationException(path + ": " + www.error);
+
+            rawstring = www.downloadHandler.text;
+        }
+
+        JsonUtility.FromJsonOverwrite(rawstring, obj);
+
+        if (store_cache)
+        {
+            System.IO.File.WriteAllText(localPath, rawstring);
+            Debug.Log("Downloaded and cached file: " + localPath);
         }
     }
 
     IEnumerable GetHelloWorld()
     {
         level_info = new Hello();
-        foreach (var x in DownloadJson("/hello", level_info))
+        foreach (var x in DownloadJson("/hello", level_info, false))
             yield return x;
 
         Debug.Log("Loading level " + level_info.level);
         Transform playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
         playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
+
+        foreach (var x in DownloadJson("/fixed", level_info))
+            yield return x;
 
         models = new Dictionary<string, Model>();
         models_importing = new Dictionary<string, bool>();
