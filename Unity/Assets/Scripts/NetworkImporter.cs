@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.Networking;
 using WebSocketSharp;
@@ -85,6 +86,21 @@ public class NetworkImporter : MonoBehaviour {
         StartCoroutine(GetHelloWorld().GetEnumerator());
     }
 
+    void RemoveOldCachedFiles()
+    {
+        string localPath = Application.persistentDataPath;
+        Regex r1 = new Regex(".*[\\\\/]([0-9]+),[^\\\\/]+$");
+        foreach (string filename in System.IO.Directory.GetFiles(localPath))
+        {
+            Match match = r1.Match(filename);
+            if (match.Success && match.Groups[1].Value != ("" + level_info.version))
+            {
+                Debug.Log("Removing old cached file: " + filename);
+                System.IO.File.Delete(filename);
+            }
+        }
+    }
+
     IEnumerable DownloadJson(string path, object obj, bool enable_cache=true)
     {
         string rawstring = null;
@@ -125,6 +141,8 @@ public class NetworkImporter : MonoBehaviour {
         level_info = new Hello();
         foreach (var x in DownloadJson("/hello", level_info, false))
             yield return x;
+
+        RemoveOldCachedFiles();
 
         Debug.Log("Loading level " + level_info.level);
         Transform playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
