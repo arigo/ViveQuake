@@ -16,7 +16,7 @@ def map_vertex((x, y, z)):
 
 def map_angles((pitch, yaw, roll)):
     # (pitch, yaw, roll) in degrees
-    return {'x': pitch, 'y': -yaw, 'z': roll}
+    return {'x': pitch, 'y': yaw, 'z': roll}
 
 
 def load_palette():

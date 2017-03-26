@@ -227,7 +227,7 @@ public class NetworkImporter : MonoBehaviour {
     {
         /* the 'angles' is provided as a vector in degrees, [pitch yaw roll] */
         Quaternion pitch = Quaternion.AngleAxis(angles[0], Vector3.right);
-        Quaternion yaw   = Quaternion.AngleAxis(angles[1], Vector3.up);
+        Quaternion yaw   = Quaternion.AngleAxis(angles[1], Vector3.down);
         Quaternion roll  = Quaternion.AngleAxis(angles[2], Vector3.forward);
         return yaw * pitch * roll;
     }
