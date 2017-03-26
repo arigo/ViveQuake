@@ -3,6 +3,8 @@ from _quake import lib, ffi
 import time
 import thread
 
+from maploader import map_vertex, map_angles
+
 
 class Edict(object):
     def __init__(self, index):
@@ -110,12 +112,18 @@ class QuakeServer(object):
             raise RuntimeError("Quake does not start a map (args=%r)" %
                                (args[1:],))
         initialize()
+        self.model_by_index = {}
 
     def host_frame(self, forced_delay=None):
         next_time = time.time()
         delay = next_time - self.prev_time
         self.prev_time = next_time
-        lib.Host_Frame(forced_delay or delay)
+        if forced_delay is not None:
+            delay = forced_delay
+        elif delay > 0.1:
+            delay = 0.1
+        #print "%.3f host frame" % delay
+        lib.Host_Frame(delay)
 
     def get_level_model_name(self):
         res = Edict(0).model
@@ -127,6 +135,39 @@ class QuakeServer(object):
             if ed.classname == 'info_player_start':
                 return ed.origin
         raise LookupError("'info_player_start' not found")
+
+    def enum_snapshot_models(self):
+        for ed in edicts():
+            index = int(ed.modelindex)
+            if index <= 1:    # 0: removed or invisible edict; 1: world edict
+                continue
+
+            try:
+                model = self.model_by_index[index]
+            except KeyError:
+                if ed.model.startswith('progs/') and ed.model.endswith('.mdl'):
+                    model = ed.model[6:-4]
+                elif ed.model.startswith('*'):
+                    levelname = self.get_level_model_name()
+                    model = '%s:%d' % (levelname, ed.modelindex - 1)
+                elif ed.model.startswith('maps/') and ed.model.endswith('.bsp'):
+                    model = ed.model[5:-4] + ':0'
+                else:
+                    print "WARNING: model missing for %r" % (ed.model,)
+                    continue
+                self.model_by_index[index] = model
+
+            yield {
+                'model': model,
+                'frame': int(ed.frame),
+                'origin': map_vertex(ed.origin),
+                'angles': map_angles(ed.angles),
+            }
+
+    def get_snapshot(self):
+        return {
+            'edicts': list(self.enum_snapshot_models()),
+        }
 
 
 if __name__ == "__main__":

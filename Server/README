@@ -9,11 +9,12 @@ with:
     then make a symlink from here, "src", to the "WinQuake" subdirectory
 
 Run "python quake_build.py" to prepare the "_quake" module.  This uses
-cffi, which you can install e.g. with "pip install cffi".
+cffi (pip install cffi).
 
 Make another symlink "id1" to the Quake standard directory "id1".
 
-Run "python server.py" to start the server.
+Run "python server.py" to start the server.  This uses tornado
+(pip install tornado).
 
 
 Some docs for the Quake file format:
