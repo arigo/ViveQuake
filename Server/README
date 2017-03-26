@@ -1,8 +1,19 @@
 ViveQuake server
 ----------------
 
-Make a symlink "id1" to the Quake standard directory "id1".
-Run server.py.
+You need the WinQuake source code in C.  Note: it's a misnomer, as this
+server will compile and run on most architectures.  Tested on Linux
+with:
+
+    git clone git://github.com/id-Software/Quake/
+    then make a symlink from here, "src", to the "WinQuake" subdirectory
+
+Run "python quake_build.py" to prepare the "_quake" module.  This uses
+cffi, which you can install e.g. with "pip install cffi".
+
+Make another symlink "id1" to the Quake standard directory "id1".
+
+Run "python server.py" to start the server.
 
 
 Some docs for the Quake file format:
