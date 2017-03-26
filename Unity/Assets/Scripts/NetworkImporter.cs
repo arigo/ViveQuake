@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
+using WebSocketSharp;
 
 
 [Serializable]
@@ -64,6 +65,8 @@ public class Snapshot
 
 public class NetworkImporter : MonoBehaviour {
 
+    public string baseUrl = "192.168.0.10:8000";
+
     public GameObject worldObject;
     public Shader worldShader;
     public GameObject meshPrefab;
@@ -71,8 +74,10 @@ public class NetworkImporter : MonoBehaviour {
     Hello level_info;
     Dictionary<string, Model> models;
     Dictionary<string, Material> materials;
+    Dictionary<string, bool> models_importing;
     List<GameObject> autorotating;
-    Vector3 autorotating_angles;
+    WebSocket ws;
+    string lastUpdateMessage;
 
     private void Start()
     {
@@ -81,7 +86,7 @@ public class NetworkImporter : MonoBehaviour {
 
     IEnumerable DownloadJson(string path, object obj)
     {
-        UnityWebRequest www = UnityWebRequest.Get("http://192.168.0.10:8000" + path);
+        UnityWebRequest www = UnityWebRequest.Get("http://" + baseUrl + path);
         yield return www.Send();
 
         if (www.isError)
@@ -106,6 +111,7 @@ public class NetworkImporter : MonoBehaviour {
         playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
 
         models = new Dictionary<string, Model>();
+        models_importing = new Dictionary<string, bool>();
         materials = new Dictionary<string, Material>();
 
         foreach (var x in ImportModel(level_info.level, "/level/"))
@@ -113,12 +119,18 @@ public class NetworkImporter : MonoBehaviour {
 
         LoadEntity(worldObject, models[level_info.level]);
 
-        while (true)
-        {
-            foreach (var x in SnapshotUpdate())
-                yield return x;
+        ws = new WebSocket("ws://" + baseUrl + "/websock");
+        ws.OnMessage += (sender, e) => lastUpdateMessage = e.Data;
+        ws.OnError += (sender, e) => Debug.Log("WebSocket error: " + e.Message);
+        ws.ConnectAsync();
+    }
 
-            yield return new WaitForSeconds(0.1f);
+    private void OnApplicationQuit()
+    {
+        if (ws != null)
+        {
+            ws.CloseAsync();
+            ws = null;
         }
     }
 
@@ -137,6 +149,7 @@ public class NetworkImporter : MonoBehaviour {
             ImportMeshes(model);
             models[model_name] = model;
         }
+        models_importing[model_name] = false;
     }
 
     IEnumerable ImportTexture(string texture_name)
@@ -248,17 +261,9 @@ public class NetworkImporter : MonoBehaviour {
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
    }
 
-    IEnumerable SnapshotUpdate()
+    void NetworkUpdateData(string msg)
     {
-        Snapshot snapshot = new Snapshot();
-        foreach (var x in DownloadJson("/snapshot", snapshot))
-            yield return x;
-
-        foreach (Edict ed in snapshot.edicts)
-        {
-            foreach (var x in ImportModel(ed.model))
-                yield return x;
-        }
+        Snapshot snapshot = JsonUtility.FromJson<Snapshot>(msg);
 
         Component[] children = worldObject.GetComponentsInChildren(typeof(MeshFilter));
         foreach (Component child in children)
@@ -268,24 +273,35 @@ public class NetworkImporter : MonoBehaviour {
         autorotating = new List<GameObject>();
         foreach (Edict ed in snapshot.edicts)
         {
+            if (!models_importing.ContainsKey(ed.model))
+            {
+                models_importing[ed.model] = true;
+                StartCoroutine(ImportModel(ed.model).GetEnumerator());
+            }
+            if (!models.ContainsKey(ed.model))
+                continue;
+
             GameObject go = Instantiate(meshPrefab, worldObject.transform, false);
             Model model = models[ed.model];
-            if (model.autorotate != 0)
-            {
-                ed.angles = autorotating_angles;
-                autorotating.Add(go);
-            }
             SetPositionAngles(go.transform, ed.origin, ed.angles);
             LoadEntity(go, model, ed.frame);
+            if (model.autorotate != 0)
+                autorotating.Add(go);
         }
     }
 
     private void Update()
     {
+        if (lastUpdateMessage != null)
+        {
+            string msg = lastUpdateMessage;
+            lastUpdateMessage = null;
+            NetworkUpdateData(msg);
+        }
+
         if (autorotating != null)
         {
-            autorotating_angles[1] = Time.time * 100;
-            Quaternion q = AnglesToQuaternion(autorotating_angles);
+            Quaternion q = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
             foreach (GameObject go in autorotating)
                 go.transform.localRotation = q;
         }
