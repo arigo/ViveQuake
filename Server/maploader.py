@@ -3,7 +3,7 @@ import qdata
 import array
 
 
-VERSION = 2
+VERSION = 4
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -103,6 +103,8 @@ def load_bsp_model(bsp, model):
         i_width = 1.0 / tex.width
         i_height = 1.0 / tex.height
         normal = bsp.planes[face.plane_id].normal
+        side = 1.0 if face.side == 0 else -1.0
+        normal = (side * normal[0], side * normal[1], side * normal[2])
         r_v = []
         for k, vindex in enumerate(vlist0):
             v = vertexes[vindex]
@@ -206,7 +208,7 @@ def load_model(modelname):
 
 if __name__ == '__main__':
     import pprint
-    #m1 = load_level('start')
-    #pprint.pprint(m1)
+    m1 = load_level('start')
+    pprint.pprint(m1)
     #pprint.pprint(load_texture(m1['texturenames'][0]))
-    pprint.pprint(load_model('dog'))
+    #pprint.pprint(load_model('dog'))
