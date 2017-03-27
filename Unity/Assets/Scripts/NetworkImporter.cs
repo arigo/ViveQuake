@@ -83,7 +83,6 @@ public class NetworkImporter : MonoBehaviour {
     public Material worldMaterial;
     public GameObject meshPrefab;
     public GameObject lightPrefab;
-    public float lightFactorRange, lightFactorIntensity;
 
     QHello level_info;
     Dictionary<string, QModel> models;
@@ -355,12 +354,13 @@ public class NetworkImporter : MonoBehaviour {
 
     void LoadLights(QModel world)
     {
+        float range_max = worldObject.transform.lossyScale.magnitude;
         foreach (QLight light in world.lights)
         {
             GameObject go = Instantiate(lightPrefab, worldObject.transform, false);
             go.transform.localPosition = light.origin;
-            go.GetComponent<Light>().range = light.light * lightFactorRange;
-            go.GetComponent<Light>().intensity = light.light * lightFactorIntensity;
+            go.GetComponent<Light>().range = range_max * light.light;
+            go.GetComponent<Light>().intensity *= light.light;
         }
     }
 
@@ -376,7 +376,7 @@ public class NetworkImporter : MonoBehaviour {
         foreach (GameObject go in autorotating)
             go.transform.localRotation = q;
 
-        DebugShowNormals();
+        //DebugShowNormals();
     }
 
     void DebugShowNormals()
@@ -389,7 +389,7 @@ public class NetworkImporter : MonoBehaviour {
             Transform tr = go.transform;
             for (int i = 0; i < v.Length; i++)
             {
-                Debug.DrawRay(tr.TransformPoint(v[i]), tr.TransformDirection(n[i]));
+                Debug.DrawRay(tr.TransformPoint(v[i]), tr.TransformDirection(n[i] * 0.1f));
             }
         }
     }
