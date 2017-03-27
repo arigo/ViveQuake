@@ -83,7 +83,7 @@ public class NetworkImporter : MonoBehaviour {
     public Material worldMaterial;
     public GameObject meshPrefab;
     public GameObject lightPrefab;
-    public float lightFactor;
+    public float lightFactorRange, lightFactorIntensity;
 
     QHello level_info;
     Dictionary<string, QModel> models;
@@ -359,7 +359,8 @@ public class NetworkImporter : MonoBehaviour {
         {
             GameObject go = Instantiate(lightPrefab, worldObject.transform, false);
             go.transform.localPosition = light.origin;
-            go.GetComponent<Light>().range = light.light * lightFactor;
+            go.GetComponent<Light>().range = light.light * lightFactorRange;
+            go.GetComponent<Light>().intensity = light.light * lightFactorIntensity;
         }
     }
 
