@@ -80,7 +80,7 @@ public class NetworkImporter : MonoBehaviour {
     public string baseUrl = "192.168.0.10:8000";
 
     public GameObject worldObject;
-    public Shader worldShader;
+    public Material worldMaterial;
     public GameObject meshPrefab;
     public GameObject lightPrefab;
     public float lightFactor;
@@ -236,7 +236,7 @@ public class NetworkImporter : MonoBehaviour {
             tex2d.Apply();
             Debug.Log("Texture " + texture_name + ": " + tex2d.width + "x" + tex2d.height);
 
-            Material mat = new Material(worldShader);
+            Material mat = Instantiate(worldMaterial);
             mat.SetTexture("_MainTex", tex2d);
             materials[texture_name] = mat;
         }
@@ -374,6 +374,23 @@ public class NetworkImporter : MonoBehaviour {
         Quaternion q = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
         foreach (GameObject go in autorotating)
             go.transform.localRotation = q;
+
+        DebugShowNormals();
+    }
+
+    void DebugShowNormals()
+    {
+        foreach (GameObject go in meshes)
+        {
+            Mesh mesh = go.GetComponent<MeshFilter>().mesh;
+            Vector3[] v = mesh.vertices;
+            Vector3[] n = mesh.normals;
+            Transform tr = go.transform;
+            for (int i = 0; i < v.Length; i++)
+            {
+                Debug.DrawRay(tr.TransformPoint(v[i]), tr.TransformDirection(n[i]));
+            }
+        }
     }
 
 }
