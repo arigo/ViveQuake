@@ -20,7 +20,7 @@ public class QMipTex
 {
     public int width, height;
     public string data;
-    public int sky;
+    public string effect;
 }
 
 [Serializable]
@@ -89,6 +89,7 @@ public class NetworkImporter : MonoBehaviour {
     public GameObject worldObject;
     public Material worldMaterial;
     public Material skyMaterial;
+    public Material waterMaterial;
     public GameObject meshPrefab;
     public GameObject lightPrefab;
 
@@ -267,7 +268,7 @@ public class NetworkImporter : MonoBehaviour {
             Material mat;
             Color32 mean_color;
 
-            if (texinfo.sky == 1)
+            if (texinfo.effect == "sky")
             {
                 int w2 = texinfo.width / 2;
                 
@@ -288,7 +289,11 @@ public class NetworkImporter : MonoBehaviour {
             else
             {
                 Texture2D tex2d = ImportSingleTexture(palette, input_data, texinfo.width, texinfo.height, texinfo.width, 0, out mean_color);
-                mat = Instantiate(worldMaterial);
+                if (texinfo.effect == "water")
+                    mat = Instantiate(waterMaterial);
+                else
+                    mat = Instantiate(worldMaterial);
+
                 mat.SetTexture("_MainTex", tex2d);
             }
 
