@@ -34,6 +34,9 @@ public class QLight
 {
     public Vector3 origin;
     public float light;
+    public int style;
+
+    public GameObject m_light;
 }
 
 [Serializable]
@@ -57,6 +60,7 @@ public class QHello
     public int version;
     public string level;
     public Vector3 start_pos;
+    public string[] lightstyles;
 }
 
 [Serializable]
@@ -91,12 +95,14 @@ public class NetworkImporter : MonoBehaviour {
     WebSocket ws;
     volatile string lastUpdateMessage;
     List<GameObject> meshes, autorotating;
+    List<QLight> varying_lights;
     Color32[] palette;
 
     private void Start()
     {
         meshes = new List<GameObject>();
         autorotating = new List<GameObject>();
+        varying_lights = new List<QLight>();
 
         StartCoroutine(GetHelloWorld().GetEnumerator());
     }
@@ -352,16 +358,57 @@ public class NetworkImporter : MonoBehaviour {
         }
     }
 
-    void LoadLights(QModel world)
+    void AddLight(QLight light)
     {
         float range_max = worldObject.transform.lossyScale.magnitude;
+
+        GameObject go = Instantiate(lightPrefab, worldObject.transform, false);
+        go.transform.localPosition = light.origin;
+
+        Light component = go.GetComponent<Light>();
+        component.range = range_max * light.light;
+        component.intensity *= light.light * GetLightLevel(light.style);
+
+        light.m_light = go;
+    }
+
+    void LoadLights(QModel world)
+    {
+        varying_lights.Clear();
+
         foreach (QLight light in world.lights)
         {
-            GameObject go = Instantiate(lightPrefab, worldObject.transform, false);
-            go.transform.localPosition = light.origin;
-            go.GetComponent<Light>().range = range_max * light.light;
-            go.GetComponent<Light>().intensity *= light.light;
+            AddLight(light);
+            if (IsVaryingLightLevel(light.style))
+                varying_lights.Add(light);
         }
+    }
+
+    float GetLightLevel(int style)
+    {
+        string map = level_info.lightstyles[style];
+        float lvl;
+
+        if (map.Length > 1)
+        {
+            float t10 = Time.time * 10;
+            int ti = (int)t10;
+            float tf = t10 - ti;
+
+            float lvl1 = map[ti % map.Length];
+            float lvl2 = map[(ti + 1) % map.Length];
+            lvl = Mathf.Lerp(lvl1, lvl2, tf);
+        }
+        else
+        {
+            lvl = map[0];
+        }
+        return (lvl - 'a') / ('m' - 'a');
+    }
+
+    public bool IsVaryingLightLevel(int style)
+    {
+        return level_info.lightstyles[style].Length > 1;
     }
 
     private void Update()
@@ -375,6 +422,12 @@ public class NetworkImporter : MonoBehaviour {
         Quaternion q = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
         foreach (GameObject go in autorotating)
             go.transform.localRotation = q;
+
+        foreach (QLight light in varying_lights)
+        {
+            Destroy(light.m_light);
+            AddLight(light);
+        }
 
         //DebugShowNormals();
     }
