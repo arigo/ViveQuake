@@ -65,6 +65,7 @@ class HelloHandler(tornado.web.RequestHandler):
             'version': maploader.VERSION,
             'level': level_name,
             'start_pos': maploader.map_vertex(start_pos),
+            'lightstyles': app.srv.get_lightstyles(),
         }
         write_json_response(self, response)
 

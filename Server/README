@@ -20,3 +20,4 @@ Run "python server.py" to start the server.  This uses tornado
 Some docs for the Quake file format:
 
 http://www.gamers.org/dEngine/quake/spec/quake-spec34/qkspec_4.htm
+http://www.gamers.org/dEngine/quake/QDP/qmapspec.html

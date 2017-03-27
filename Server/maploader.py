@@ -3,7 +3,7 @@ import qdata
 import array
 
 
-VERSION = 4
+VERSION = 5
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -39,16 +39,25 @@ def load_level(levelname, model_index=0):
 
     result['palette'] = load_palette()
 
+    # static lights are the ones without a 'targetname'
     r_lights = []
     for entity in qdata.parse_entities(bsp.entities.rawdata):
         if (entity.get('classname', '').startswith('light')
-                and 'light' in entity):
-            r_lights.append({
-                'origin': map_vertex(qdata.parse_vec3(entity['origin'])),
-                'light': float(entity['light']),
-            })
+                and not entity.get('targetname')):
+            r_lights.append(load_light(entity))
     result['lights'] = r_lights
 
+    return result
+
+
+def load_light(entity):
+    e_light = entity.get('light', 200)
+    result = {
+        'origin': map_vertex(qdata.parse_vec3(entity['origin'])),
+        'light': float(e_light),
+    }
+    if entity.get('style', 0) != 0:
+        result['style'] = int(entity['style'])
     return result
 
 
@@ -208,7 +217,7 @@ def load_model(modelname):
 
 if __name__ == '__main__':
     import pprint
-    m1 = load_level('start')
-    pprint.pprint(m1)
+    m1 = load_level('e1m1')
+    pprint.pprint(m1['lights'])
     #pprint.pprint(load_texture(m1['texturenames'][0]))
     #pprint.pprint(load_model('dog'))

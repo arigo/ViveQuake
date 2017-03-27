@@ -28,6 +28,7 @@ ffibuilder.cdef("""
 
     typedef struct {
         int num_edicts;
+        char *lightstyles[...];
         ...;
     } server_t;
 
