@@ -24,7 +24,8 @@ public class MipTex
 [Serializable]
 public class Frame
 {
-    public Vector3[] v;
+    public Vector3[] v;   /* vertices position */
+    public Vector3[] n;   /* list of normals, same length */
 }
 
 [Serializable]
@@ -271,9 +272,9 @@ public class NetworkImporter : MonoBehaviour {
         mesh.subMeshCount = num_textures;
         mesh.vertices = frame.v;
         mesh.uv = model.uvs;
+        mesh.normals = frame.n;
         for (int i = 0; i < num_textures; i++)
             mesh.SetTriangles(triangles[i], i);
-        mesh.RecalculateNormals();
         return mesh;
     }
 

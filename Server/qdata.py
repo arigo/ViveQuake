@@ -404,6 +404,18 @@ class QBspModels(QData):
         ('list', FArray(QBspModel)),
         ]
 
+class QPlane(QData):
+    FIELDS = [
+        ('normal', FVec3()),
+        ('dist', FFloat()),
+        ('type', FInt()),
+        ]
+
+class QPlanes(QData):
+    FIELDS = [
+        ('list', FArray(QPlane)),
+        ]
+
 class QListOfInt(QData):
     FIELDS = [
         ('list', FArrayOf(FInt())),
@@ -418,7 +430,7 @@ class QBsp(QData):
     FIELDS = [
         ('signature', FSignature(29)),
         ('entities',  FLump(QData)),
-        ('planes',  FLump(QData)),
+        ('planes',  FLump(QPlanes)),
         ('textures',  FLump(QTextures)),
         ('vertexes',  FLump(QListOfVec3)),
         ('visibility',  FLump(QData)),
@@ -781,6 +793,32 @@ def load(filename):
     cls = GUESS_CLASS.get(ext, QData)
     data = file(filename, 'rb').read()
     return cls(data)
+
+
+def parse_entities(rawdata):
+    import re
+    r_line = re.compile(r'"([a-zA-Z0-9_]+)"\s+"(.+)"$')
+    entity = None
+    for line in rawdata.splitlines(False):
+        line = line.strip()
+        if line == '{':
+            assert entity is None
+            entity = {}
+        elif line == '}':
+            assert entity is not None
+            yield entity
+            entity = None
+        elif line and line != '\x00':
+            match = r_line.match(line)
+            assert match, "unexpected line: %r" % (line,)
+            # XXX doesn't unquote or parse the value string
+            entity[match.group(1)] = match.group(2)
+    assert entity is None
+
+def parse_vec3(string):
+    vec3 = string.split()
+    assert len(vec3) == 3, "unexpected string for parse_vec3: %r" % (string,)
+    return map(float, vec3)
 
 
 if __name__ == '__main__':
