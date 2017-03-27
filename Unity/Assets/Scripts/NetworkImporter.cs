@@ -20,6 +20,7 @@ public class QMipTex
 {
     public int width, height;
     public string data;
+    public int sky;
 }
 
 [Serializable]
@@ -87,6 +88,7 @@ public class NetworkImporter : MonoBehaviour {
 
     public GameObject worldObject;
     public Material worldMaterial;
+    public Material skyMaterial;
     public GameObject meshPrefab;
     public GameObject lightPrefab;
 
@@ -98,7 +100,6 @@ public class NetworkImporter : MonoBehaviour {
     volatile string lastUpdateMessage;
     List<GameObject> meshes, autorotating;
     List<QLight> varying_lights;
-    Color32[] palette;
     string[] lightstyles;
 
     private void Start()
@@ -225,6 +226,34 @@ public class NetworkImporter : MonoBehaviour {
         models_importing[model_name] = false;
     }
 
+    Texture2D ImportSingleTexture(Color32[] palette, byte[] input_data, int width, int height, 
+                                  int scanline, int offset, out Color32 mean_color)
+    {
+        int size = width * height;
+        Color32[] colors = new Color32[size];
+        int rr = 0, gg = 0, bb = 0;
+        for (int y = 0; y < height; y++)
+        {
+            int base_src = offset + y * scanline;
+            int base_dst = y * width;
+            for (int x = 0; x < width; x++)
+            {
+                Color32 c = palette[input_data[base_src + x]];
+                colors[base_dst + x] = c;
+                rr += c.r;
+                gg += c.g;
+                bb += c.b;
+            }
+        }
+        mean_color = new Color32((byte)(rr / size), (byte)(gg / size), (byte)(bb / size), 0);
+
+        Texture2D tex2d = new Texture2D(width, height);
+        tex2d.SetPixels32(colors);
+        tex2d.filterMode = FilterMode.Bilinear;
+        tex2d.Apply();
+        return tex2d;
+    }
+
     IEnumerable ImportTexture(string texture_name, Color32[] palette)
     {
         if (!materials.ContainsKey(texture_name))
@@ -232,21 +261,37 @@ public class NetworkImporter : MonoBehaviour {
             QMipTex texinfo = new QMipTex();
             foreach (var x in DownloadJson("/texture/" + texture_name, texinfo))
                 yield return x;
+            Debug.Log("Texture " + texture_name + ": " + texinfo.width + "x" + texinfo.height);
 
-            Texture2D tex2d = new Texture2D(texinfo.width, texinfo.height);
             byte[] input_data = Convert.FromBase64String(texinfo.data);
-            int size = texinfo.width * texinfo.height;
-            Color32[] colors = new Color32[size];
-            for (int k = 0; k < size; k++)
-            {
-                colors[k] = palette[input_data[k]];
-            }
-            tex2d.SetPixels32(colors);
-            tex2d.Apply();
-            Debug.Log("Texture " + texture_name + ": " + tex2d.width + "x" + tex2d.height);
+            Material mat;
+            Color32 mean_color;
 
-            Material mat = Instantiate(worldMaterial);
-            mat.SetTexture("_MainTex", tex2d);
+            if (texinfo.sky == 1)
+            {
+                int w2 = texinfo.width / 2;
+                
+                /* the right half */
+                Texture2D tex0 = ImportSingleTexture(palette, input_data, w2, texinfo.height, texinfo.width, w2, out mean_color);
+
+                /* the left half */
+                Color32[] palette_with_alpha = new Color32[256];
+                palette_with_alpha[0] = mean_color;
+                for (int i = 1; i < 256; i++)
+                    palette_with_alpha[i] = palette[i];
+                Texture2D tex1 = ImportSingleTexture(palette_with_alpha, input_data, w2, texinfo.height, texinfo.width, 0, out mean_color);
+
+                mat = Instantiate(skyMaterial);
+                mat.SetTexture("_MainTex", tex0);
+                mat.SetTexture("_ExtraTex", tex1);
+            }
+            else
+            {
+                Texture2D tex2d = ImportSingleTexture(palette, input_data, texinfo.width, texinfo.height, texinfo.width, 0, out mean_color);
+                mat = Instantiate(worldMaterial);
+                mat.SetTexture("_MainTex", tex2d);
+            }
+
             materials[texture_name] = mat;
         }
     }
