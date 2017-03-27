@@ -2,55 +2,64 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Threading;
 using UnityEngine;
 using UnityEngine.Networking;
 using WebSocketSharp;
 
 
 [Serializable]
-public class Face
+public class QFace
 {
     public int[] v;
     public int t;               /* texture index */
 }
 
 [Serializable]
-public class MipTex
+public class QMipTex
 {
     public int width, height;
     public string data;
 }
 
 [Serializable]
-public class Frame
+public class QFrame
 {
     public Vector3[] v;
 }
 
 [Serializable]
-public class Model
+public class QLight
 {
-    public Frame[] frames;
+    public Vector3 origin;
+    public float light;
+}
+
+[Serializable]
+public class QModel
+{
+    public QFrame[] frames;
     public Vector2[] uvs;
-    public Face[] faces;
+    public QFace[] faces;
     public string[] texturenames;
     public int autorotate;
+    public Color32[] palette;    // only on world models
+    public QLight[] lights;       // only on world models
 
     public Mesh[] m_meshes;
     public Material[] m_materials;
 }
 
 [Serializable]
-public class Hello
+public class QHello
 {
     public int version;
     public string level;
     public Vector3 start_pos;
-    public Color32[] palette;
 }
 
 [Serializable]
-public class Edict
+public class QEdict
 {
     public string model;
     public int frame;
@@ -59,9 +68,9 @@ public class Edict
 }
 
 [Serializable]
-public class Snapshot
+public class QSnapshot
 {
-    public Edict[] edicts;
+    public QEdict[] edicts;
 }
 
 
@@ -72,17 +81,23 @@ public class NetworkImporter : MonoBehaviour {
     public GameObject worldObject;
     public Shader worldShader;
     public GameObject meshPrefab;
+    public GameObject lightPrefab;
+    public float lightFactor;
 
-    Hello level_info;
-    Dictionary<string, Model> models;
+    QHello level_info;
+    Dictionary<string, QModel> models;
     Dictionary<string, Material> materials;
     Dictionary<string, bool> models_importing;
-    List<GameObject> autorotating;
     WebSocket ws;
-    string lastUpdateMessage;
+    volatile string lastUpdateMessage;
+    List<GameObject> meshes, autorotating;
+    Color32[] palette;
 
     private void Start()
     {
+        meshes = new List<GameObject>();
+        autorotating = new List<GameObject>();
+
         StartCoroutine(GetHelloWorld().GetEnumerator());
     }
 
@@ -138,7 +153,7 @@ public class NetworkImporter : MonoBehaviour {
 
     IEnumerable GetHelloWorld()
     {
-        level_info = new Hello();
+        level_info = new QHello();
         foreach (var x in DownloadJson("/hello", level_info, false))
             yield return x;
 
@@ -148,22 +163,25 @@ public class NetworkImporter : MonoBehaviour {
         Transform playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
         playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
 
-        foreach (var x in DownloadJson("/fixed", level_info))
-            yield return x;
-
-        models = new Dictionary<string, Model>();
+        models = new Dictionary<string, QModel>();
         models_importing = new Dictionary<string, bool>();
         materials = new Dictionary<string, Material>();
 
         foreach (var x in ImportModel(level_info.level, "/level/"))
             yield return x;
 
-        LoadEntity(worldObject, models[level_info.level]);
+        LoadLights(GetWorldModel());
+        LoadEntity(worldObject, GetWorldModel());
 
         ws = new WebSocket("ws://" + baseUrl + "/websock");
         ws.OnMessage += (sender, e) => lastUpdateMessage = e.Data;
         ws.OnError += (sender, e) => Debug.Log("WebSocket error: " + e.Message);
         ws.ConnectAsync();
+    }
+
+    QModel GetWorldModel()
+    {
+        return models[level_info.level];
     }
 
     private void OnApplicationQuit()
@@ -179,12 +197,16 @@ public class NetworkImporter : MonoBehaviour {
     {
         if (!models.ContainsKey(model_name))
         {
-            Model model = new Model();
+            QModel model = new QModel();
             foreach (var x in DownloadJson(baseurl + model_name, model))
                 yield return x;
 
+            Color32[] palette = model.palette;
+            if (palette == null || palette.Length == 0)
+                palette = GetWorldModel().palette;
+
             for (int i = 0; i < model.texturenames.Length; i++)
-                foreach (var x in ImportTexture(model.texturenames[i]))
+                foreach (var x in ImportTexture(model.texturenames[i], palette))
                     yield return x;
 
             ImportMeshes(model);
@@ -193,15 +215,14 @@ public class NetworkImporter : MonoBehaviour {
         models_importing[model_name] = false;
     }
 
-    IEnumerable ImportTexture(string texture_name)
+    IEnumerable ImportTexture(string texture_name, Color32[] palette)
     {
         if (!materials.ContainsKey(texture_name))
         {
-            MipTex texinfo = new MipTex();
+            QMipTex texinfo = new QMipTex();
             foreach (var x in DownloadJson("/texture/" + texture_name, texinfo))
                 yield return x;
 
-            Color32[] palette = level_info.palette;
             Texture2D tex2d = new Texture2D(texinfo.width, texinfo.height);
             byte[] input_data = Convert.FromBase64String(texinfo.data);
             int size = texinfo.width * texinfo.height;
@@ -220,7 +241,7 @@ public class NetworkImporter : MonoBehaviour {
         }
     }
 
-    void ImportMeshes(Model model)
+    void ImportMeshes(QModel model)
     {
         Mesh[] meshes = new Mesh[model.frames.Length];
         for (int i = 0; i < model.frames.Length; i++)
@@ -233,16 +254,16 @@ public class NetworkImporter : MonoBehaviour {
         model.m_materials = mat;
     }
 
-    Mesh ImportMesh(Model model, int frameindex)
+    Mesh ImportMesh(QModel model, int frameindex)
     {
         /* note: this returns a new Mesh, computed independently, for each frame */
-        Frame frame = model.frames[frameindex];
+        QFrame frame = model.frames[frameindex];
 
         int num_textures = model.texturenames.Length;
         int[][] triangles = new int[num_textures][];
 
         int[] countTriangles = new int[num_textures];
-        foreach (Face face in model.faces)
+        foreach (QFace face in model.faces)
         {
             countTriangles[face.t] += face.v.Length - 2;
         }
@@ -251,7 +272,7 @@ public class NetworkImporter : MonoBehaviour {
             triangles[i] = new int[countTriangles[i] * 3];
 
         int[] bb = new int[num_textures];
-        foreach (Face face in model.faces)
+        foreach (QFace face in model.faces)
         {
             int b = bb[face.t];
             int[] tri = triangles[face.t];
@@ -292,7 +313,7 @@ public class NetworkImporter : MonoBehaviour {
         transform.localRotation = AnglesToQuaternion(angles);
     }
 
-    void LoadEntity(GameObject go, Model model, int frameindex=0)
+    void LoadEntity(GameObject go, QModel model, int frameindex=0)
     {
         Mesh mesh = model.m_meshes[frameindex];
         MeshRenderer rend = go.GetComponent<MeshRenderer>();
@@ -304,15 +325,14 @@ public class NetworkImporter : MonoBehaviour {
 
     void NetworkUpdateData(string msg)
     {
-        Snapshot snapshot = JsonUtility.FromJson<Snapshot>(msg);
+        QSnapshot snapshot = JsonUtility.FromJson<QSnapshot>(msg);
 
-        Component[] children = worldObject.GetComponentsInChildren(typeof(MeshFilter));
-        foreach (Component child in children)
-            if (child.gameObject != worldObject)
-                Destroy(child.gameObject);
-
-        autorotating = new List<GameObject>();
-        foreach (Edict ed in snapshot.edicts)
+        foreach (GameObject go in meshes)
+            Destroy(go);
+        meshes.Clear();
+        autorotating.Clear();
+        
+        foreach (QEdict ed in snapshot.edicts)
         {
             if (!models_importing.ContainsKey(ed.model))
             {
@@ -323,7 +343,8 @@ public class NetworkImporter : MonoBehaviour {
                 continue;
 
             GameObject go = Instantiate(meshPrefab, worldObject.transform, false);
-            Model model = models[ed.model];
+            meshes.Add(go);
+            QModel model = models[ed.model];
             SetPositionAngles(go.transform, ed.origin, ed.angles);
             LoadEntity(go, model, ed.frame);
             if (model.autorotate != 0)
@@ -331,21 +352,27 @@ public class NetworkImporter : MonoBehaviour {
         }
     }
 
+    void LoadLights(QModel world)
+    {
+        foreach (QLight light in world.lights)
+        {
+            GameObject go = Instantiate(lightPrefab, worldObject.transform, false);
+            go.transform.localPosition = light.origin;
+            go.GetComponent<Light>().range = light.light * lightFactor;
+        }
+    }
+
     private void Update()
     {
         if (lastUpdateMessage != null)
         {
-            string msg = lastUpdateMessage;
-            lastUpdateMessage = null;
+            string msg = Interlocked.Exchange<string>(ref lastUpdateMessage, null);
             NetworkUpdateData(msg);
         }
 
-        if (autorotating != null)
-        {
-            Quaternion q = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
-            foreach (GameObject go in autorotating)
-                go.transform.localRotation = q;
-        }
+        Quaternion q = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
+        foreach (GameObject go in autorotating)
+            go.transform.localRotation = q;
     }
 
 }
