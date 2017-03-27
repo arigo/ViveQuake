@@ -3,7 +3,7 @@ import qdata
 import array
 
 
-VERSION = 5
+VERSION = 7
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -107,20 +107,29 @@ def load_bsp_model(bsp, model):
         t4 = texinfo.t
         texid = texinfo.miptex
         tex = bsp.textures[texid]
+
+        vlist0 = [vertexes[vindex] for vindex in vlist0]
+        if tex.name.startswith('sky'):
+            vlistlist = []
+            for vtri in triangulate(vlist0):
+                explode_into_smaller_faces(vtri, vlistlist)
+            #print "-------------->  %d" % len(vlistlist)
+        else:
+            vlistlist = [vlist0]
+
         i_width = 1.0 / tex.width
         i_height = 1.0 / tex.height
         normal = bsp.planes[face.plane_id].normal
         side = 1.0 if face.side == 0 else -1.0
         normal = (side * normal[0], side * normal[1], side * normal[2])
-        r_v = []
-        for k, vindex in enumerate(vlist0):
-            v = vertexes[vindex]
-            s = (v[0] * s4[0] + v[1] * s4[1] + v[2] * s4[2] + s4[3]) * i_width
-            t = (v[0] * t4[0] + v[1] * t4[1] + v[2] * t4[2] + t4[3]) * i_height
-            r_v.append(get_vertex(v, normal, s, t))
-
         texnum = used_textures.setdefault(texid, len(used_textures))
-        r_faces.append({'v': r_v, 't': texnum})
+        for vlist in vlistlist:
+            r_v = []
+            for k, v in enumerate(vlist):
+                s = v[0] * s4[0] + v[1] * s4[1] + v[2] * s4[2] + s4[3]
+                t = v[0] * t4[0] + v[1] * t4[1] + v[2] * t4[2] + t4[3]
+                r_v.append(get_vertex(v, normal, s * i_width, t * i_height))
+            r_faces.append({'v': r_v, 't': texnum})
 
     r_texturenames = []
     used_textures = used_textures.items()
@@ -129,7 +138,11 @@ def load_bsp_model(bsp, model):
         tex = bsp.textures[texid]
         assert tex.width == tex.mipmaps[0].w
         assert tex.height == tex.mipmaps[0].h
-        hx = _get_texture_key(tex.mipmaps[0])
+        if tex.name.startswith('sky'):
+            extra = 'sky'
+        else:
+            extra = None
+        hx = _get_texture_key(tex.mipmaps[0], extra=extra)
         assert texnum == len(r_texturenames)
         r_texturenames.append(hx)
 
@@ -141,20 +154,61 @@ def load_bsp_model(bsp, model):
         'texturenames': r_texturenames,
         }
 
+def triangulate(vlist):
+    # This logic is for the client, where the sky is typically rendered
+    # with a shader.  This shader assumes the sky is made of small
+    # enough triangles.
+    cx = cy = cz = 0.0
+    for (x, y, z) in vlist:
+        cx += x
+        cy += y
+        cz += z
+    cx /= len(vlist)
+    cy /= len(vlist)
+    cz /= len(vlist)
+    center = (cx, cy, cz)
+    v_prev = vlist[-1]
+    for v_next in vlist:
+        yield [center, v_prev, v_next]
+        v_prev = v_next
+
+def _dist2((x1, y1, z1), (x2, y2, z2)):
+    x2 -= x1
+    y2 -= y1
+    z2 -= z1
+    return x2 * x2 + y2 * y2 + z2 * z2
+
+def explode_into_smaller_faces(vlist, vlistlist):
+    v1, v2, v3 = vlist
+    MAX = 5000
+    if _dist2(v1, v2) > MAX or _dist2(v2, v3) > MAX or _dist2(v1, v3) > MAX:
+        c1 = ((v2[0]+v3[0])*0.5, (v2[1]+v3[1])*0.5, (v2[2]+v3[2])*0.5)
+        c2 = ((v1[0]+v3[0])*0.5, (v1[1]+v3[1])*0.5, (v1[2]+v3[2])*0.5)
+        c3 = ((v1[0]+v2[0])*0.5, (v1[1]+v2[1])*0.5, (v1[2]+v2[2])*0.5)
+        explode_into_smaller_faces([v1, c3, c2], vlistlist)
+        explode_into_smaller_faces([v2, c1, c3], vlistlist)
+        explode_into_smaller_faces([v3, c2, c1], vlistlist)
+        explode_into_smaller_faces([c1, c2, c3], vlistlist)
+    else:
+        vlistlist.append(vlist)
+
 
 def load_texture(hx):
-    mipmap = _textures_by_name[hx]
+    mipmap, extra = _textures_by_name[hx]
     r_data = mipmap.data.encode('base64')
-    return {'width': mipmap.w, 'height': mipmap.h, 'data': r_data}
+    result = {'width': mipmap.w, 'height': mipmap.h, 'data': r_data}
+    if extra == 'sky':
+        result['sky'] = 1
+    return result
 
-def _get_texture_key(mipmap):
+def _get_texture_key(mipmap, extra=None):
     try:
         return mipmap._hx_key
     except AttributeError:
-        key = '%d %d %s' % (mipmap.w, mipmap.h, mipmap.data)
+        key = '%r %d %d %s' % (extra, mipmap.w, mipmap.h, mipmap.data)
         hx = md5.md5(key).hexdigest()
         mipmap._hx_key = hx
-        _textures_by_name.setdefault(hx, mipmap)
+        _textures_by_name.setdefault(hx, (mipmap, extra))
         return hx
 
 
@@ -216,6 +270,6 @@ def load_model(modelname):
 if __name__ == '__main__':
     import pprint
     m1 = load_level('e1m1')
-    pprint.pprint(m1['lights'])
+    #pprint.pprint(m1['lights'])
     #pprint.pprint(load_texture(m1['texturenames'][0]))
     #pprint.pprint(load_model('dog'))
