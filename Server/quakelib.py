@@ -136,9 +136,9 @@ class QuakeServer(object):
                 return ed.origin
         raise LookupError("'info_player_start' not found")
 
-    def get_lightstyles(self):
+    def get_lightstyles(self, first=0):
         lightstyles = []
-        for p in lib.sv.lightstyles:
+        for p in lib.sv.lightstyles[first : len(lib.sv.lightstyles)]:
             lightstyles.append(ffi.string(p) if p else "m")
         return lightstyles
 
@@ -174,6 +174,7 @@ class QuakeServer(object):
     def get_snapshot(self):
         return {
             'edicts': list(self.enum_snapshot_models()),
+            'ls32': self.get_lightstyles(first=32),
         }
 
 

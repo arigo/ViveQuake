@@ -39,11 +39,9 @@ def load_level(levelname, model_index=0):
 
     result['palette'] = load_palette()
 
-    # static lights are the ones without a 'targetname'
     r_lights = []
     for entity in qdata.parse_entities(bsp.entities.rawdata):
-        if (entity.get('classname', '').startswith('light')
-                and not entity.get('targetname')):
+        if entity.get('classname', '').startswith('light'):
             r_lights.append(load_light(entity))
     result['lights'] = r_lights
 
