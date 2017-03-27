@@ -3,7 +3,7 @@ import qdata
 import array
 
 
-VERSION = 7
+VERSION = 8
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -113,7 +113,6 @@ def load_bsp_model(bsp, model):
             vlistlist = []
             for vtri in triangulate(vlist0):
                 explode_into_smaller_faces(vtri, vlistlist)
-            #print "-------------->  %d" % len(vlistlist)
         else:
             vlistlist = [vlist0]
 
@@ -140,6 +139,8 @@ def load_bsp_model(bsp, model):
         assert tex.height == tex.mipmaps[0].h
         if tex.name.startswith('sky'):
             extra = 'sky'
+        elif tex.name.startswith('*'):
+            extra = 'water'
         else:
             extra = None
         hx = _get_texture_key(tex.mipmaps[0], extra=extra)
@@ -197,8 +198,8 @@ def load_texture(hx):
     mipmap, extra = _textures_by_name[hx]
     r_data = mipmap.data.encode('base64')
     result = {'width': mipmap.w, 'height': mipmap.h, 'data': r_data}
-    if extra == 'sky':
-        result['sky'] = 1
+    if extra:
+        result['effect'] = extra
     return result
 
 def _get_texture_key(mipmap, extra=None):
