@@ -37,6 +37,7 @@ public class QLight
     public int style;
 
     public GameObject m_light;
+    public float m_factor;
 }
 
 [Serializable]
@@ -76,6 +77,7 @@ public class QEdict
 public class QSnapshot
 {
     public QEdict[] edicts;
+    public string[] ls32;
 }
 
 
@@ -97,6 +99,7 @@ public class NetworkImporter : MonoBehaviour {
     List<GameObject> meshes, autorotating;
     List<QLight> varying_lights;
     Color32[] palette;
+    string[] lightstyles;
 
     private void Start()
     {
@@ -173,6 +176,7 @@ public class NetworkImporter : MonoBehaviour {
         models_importing = new Dictionary<string, bool>();
         materials = new Dictionary<string, Material>();
 
+        lightstyles = level_info.lightstyles;
         foreach (var x in ImportModel(level_info.level, "/level/"))
             yield return x;
 
@@ -337,7 +341,10 @@ public class NetworkImporter : MonoBehaviour {
             Destroy(go);
         meshes.Clear();
         autorotating.Clear();
-        
+
+        for (int i = 0; i < snapshot.ls32.Length; i++)
+            lightstyles[32 + i] = snapshot.ls32[i];
+
         foreach (QEdict ed in snapshot.edicts)
         {
             if (!models_importing.ContainsKey(ed.model))
@@ -358,7 +365,7 @@ public class NetworkImporter : MonoBehaviour {
         }
     }
 
-    void AddLight(QLight light)
+    void AddLight(QLight light, float light_factor)
     {
         float range_max = worldObject.transform.lossyScale.magnitude;
 
@@ -367,9 +374,10 @@ public class NetworkImporter : MonoBehaviour {
 
         Light component = go.GetComponent<Light>();
         component.range = range_max * light.light;
-        component.intensity *= light.light * GetLightLevel(light.style);
+        component.intensity *= light.light * light_factor;
 
         light.m_light = go;
+        light.m_factor = light_factor;
     }
 
     void LoadLights(QModel world)
@@ -378,13 +386,13 @@ public class NetworkImporter : MonoBehaviour {
 
         foreach (QLight light in world.lights)
         {
-            AddLight(light);
+            AddLight(light, GetLightFactor(light.style));
             if (IsVaryingLightLevel(light.style))
                 varying_lights.Add(light);
         }
     }
 
-    float GetLightLevel(int style)
+    float GetLightFactor(int style)
     {
         string map = level_info.lightstyles[style];
         float lvl;
@@ -408,7 +416,7 @@ public class NetworkImporter : MonoBehaviour {
 
     public bool IsVaryingLightLevel(int style)
     {
-        return level_info.lightstyles[style].Length > 1;
+        return level_info.lightstyles[style].Length > 1 || style >= 32;
     }
 
     private void Update()
@@ -425,8 +433,12 @@ public class NetworkImporter : MonoBehaviour {
 
         foreach (QLight light in varying_lights)
         {
-            Destroy(light.m_light);
-            AddLight(light);
+            float factor = GetLightFactor(light.style);
+            if (factor != light.m_factor)
+            {
+                Destroy(light.m_light);
+                AddLight(light, factor);
+            }
         }
 
         //DebugShowNormals();
