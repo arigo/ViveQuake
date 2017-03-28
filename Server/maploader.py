@@ -3,7 +3,7 @@ import qdata
 import array
 
 
-VERSION = 8
+MAPDATA_VERSION = 11
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -256,16 +256,13 @@ def load_model(modelname):
     assert mdl.skins[0].h == mdl.skinheight
     r_texturenames = [_get_texture_key(mdl.skins[0])]
 
-    result = {
+    return {
         'frames': r_frames,
         'uvs': r_uvs,
         'faces': r_faces,
         'texturenames': r_texturenames,
+        'flags': mdl.flags,
         }
-    if mdl.flags & 8:        # EF_ROTATE
-        result['autorotate'] = 1
-
-    return result
 
 
 if __name__ == '__main__':

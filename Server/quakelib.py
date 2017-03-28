@@ -144,6 +144,9 @@ class QuakeServer(object):
 
     def enum_snapshot_models(self):
         NULLVEC = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+        SOLID2FLAGS = {lib.SOLID_NOT:     0x1000,
+                       lib.SOLID_TRIGGER: 0x2000}
+        #
         for ed in edicts(start=1):
             index = int(ed.modelindex)
             # XXX use sv.model_precache instead
@@ -167,14 +170,16 @@ class QuakeServer(object):
 
             if model:
                 frame = ed.frame
+                flags = SOLID2FLAGS.get(int(ed.solid), 0)
+                flags |= (int(ed.effects) & 0xFFF)
                 org = map_vertex(ed.origin)
                 ang = map_angles(ed.angles)
             else:
                 frame = 0.0
+                flags = 0.0
                 org = NULLVEC
                 ang = NULLVEC
-            yield [model,
-                   frame,
+            yield [model, frame, flags,
                    org['x'], org['y'], org['z'],
                    ang['x'], ang['y'], ang['z'],
                    ]

@@ -51,6 +51,9 @@ ffibuilder.cdef("""
 
     eval_t *get_edict_field(int eindex, int fieldindex);
     void exit(int);
+
+    #define SOLID_NOT		...		// no interaction with other objects
+    #define SOLID_TRIGGER	...		// touch on edge, but not blocking
 """)
 
 ffibuilder.set_source("_quake", r"""

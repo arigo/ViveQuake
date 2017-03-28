@@ -17,6 +17,9 @@ import maploader
 import quakelib
 
 
+WEBSOCK_VERSION = 3
+
+
 define("port", default=8000, help="run on the given port", type=int)
 
 
@@ -28,7 +31,7 @@ class Application(tornado.web.Application):
             (r"/level/([A-Za-z0-9_-]+)", LevelHandler),
             (r"/model/([A-Za-z0-9_,-]+)", ModelHandler),
             (r"/texture/([a-z0-9]+)", TextureHandler),
-            (r"/websock/2", WebSockHandler),
+            (r"/websock/%d" % WEBSOCK_VERSION, WebSockHandler),
         ]
         super(Application, self).__init__(handlers, static_path="static",
                                           compress_response=True)
@@ -63,7 +66,7 @@ class HelloHandler(tornado.web.RequestHandler):
         level_name = app.srv.get_level_model_name()
         start_pos = app.srv.get_player_start_position()
         response = {
-            'version': maploader.VERSION,
+            'version': maploader.MAPDATA_VERSION,
             'level': level_name,
             'start_pos': maploader.map_vertex(start_pos),
             'lightstyles': app.srv.get_lightstyles(),
