@@ -48,12 +48,14 @@ public class QModel
     public Vector2[] uvs;
     public QFace[] faces;
     public string[] texturenames;
-    public int autorotate;
+    public int flags;            // EF_XXX
     public Color32[] palette;    // only on world models
     public QLight[] lights;       // only on world models
 
     public Mesh[] m_meshes;
     public Material[] m_materials;
+
+    public const int EF_ROTATE = 8;
 }
 
 [Serializable]
@@ -85,12 +87,16 @@ public struct SnapEntry
         f = _f;
         s = _s;
     }
+
+    public const int SOLID_NOT     = 0x1000;
+    public const int SOLID_TRIGGER = 0x2000;
 }
 
 
 public class NetworkImporter : MonoBehaviour {
 
     public string baseUrl = "192.168.0.10:8000";
+    const int WEBSOCK_VERSION = 3;
 
     public GameObject worldObject;
     public Material worldMaterial;
@@ -109,6 +115,8 @@ public class NetworkImporter : MonoBehaviour {
     List<GameObject> meshes, autorotating;
     List<QLight> varying_lights;
     string[] lightstyles;
+
+    const int LAYER_NOBLOCK = 8;
 
     private void Start()
     {
@@ -193,7 +201,7 @@ public class NetworkImporter : MonoBehaviour {
         LoadEntity(worldObject, GetWorldModel());
 
         workUpdateMessage = new SnapEntry[0];
-        ws = new WebSocket("ws://" + baseUrl + "/websock/2");
+        ws = new WebSocket("ws://" + baseUrl + "/websock/" + WEBSOCK_VERSION);
         ws.OnMessage += (sender, e) => AsyncDecompressMsg(e.RawData);
         ws.OnError += (sender, e) => Debug.LogError("WebSocket error: " + e.Message);
         ws.ConnectAsync();
@@ -431,7 +439,7 @@ public class NetworkImporter : MonoBehaviour {
             rend.materials = model.m_materials;
         go.GetComponent<MeshFilter>().mesh = mesh;
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
-   }
+    }
 
     void NetworkUpdateData(SnapEntry[] msg)
     {
@@ -444,7 +452,7 @@ public class NetworkImporter : MonoBehaviour {
         for (int i = 0; i < num_lightstyles; i++)
             lightstyles[32 + i] = msg[1 + i].s;
 
-        for (int msgIndex = 1 + num_lightstyles; msgIndex < msg.Length; msgIndex += 8)
+        for (int msgIndex = 1 + num_lightstyles; msgIndex < msg.Length; msgIndex += 9)
         {
             string m_model = msg[msgIndex].s;
             if (m_model == null || m_model.Length == 0)
@@ -459,19 +467,32 @@ public class NetworkImporter : MonoBehaviour {
                 continue;
 
             int m_frame = msg[msgIndex + 1].i;
-            Vector3 m_origin = new Vector3(msg[msgIndex + 2].f,
-                                           msg[msgIndex + 3].f,
-                                           msg[msgIndex + 4].f);
-            Vector3 m_angles = new Vector3(msg[msgIndex + 5].f,
-                                           msg[msgIndex + 6].f,
-                                           msg[msgIndex + 7].f);
+            int m_flags = msg[msgIndex + 2].i;
+            Vector3 m_origin = new Vector3(msg[msgIndex + 3].f,
+                                           msg[msgIndex + 4].f,
+                                           msg[msgIndex + 5].f);
+            Vector3 m_angles = new Vector3(msg[msgIndex + 6].f,
+                                           msg[msgIndex + 7].f,
+                                           msg[msgIndex + 8].f);
 
             GameObject go = Instantiate(meshPrefab, worldObject.transform, false);
             meshes.Add(go);
             QModel qmodel = models[m_model];
             SetPositionAngles(go.transform, m_origin, m_angles);
             LoadEntity(go, qmodel, m_frame);
-            if (qmodel.autorotate != 0)
+
+            if ((m_flags & SnapEntry.SOLID_NOT) != 0)
+            {
+                go.layer = LAYER_NOBLOCK;
+                go.GetComponent<MeshCollider>().enabled = false;
+            }
+            else if ((m_flags & SnapEntry.SOLID_TRIGGER) != 0)
+            {
+                go.layer = LAYER_NOBLOCK;
+                go.GetComponent<MeshCollider>().convex = true;
+                go.GetComponent<MeshCollider>().isTrigger = true;
+            }
+            if ((qmodel.flags & QModel.EF_ROTATE) != 0)
                 autorotating.Add(go);
         }
     }
