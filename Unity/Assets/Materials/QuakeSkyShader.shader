@@ -62,9 +62,18 @@ Shader "Quake/SkyShader"
 			// color ("SV_Target" semantic)
 			fixed4 frag(v2f i) : SV_Target
 			{
+				// To avoid bleeding the color of the transparent pixels,
+				// we consider RGBA colors scaled by the A value.  That's
+				// the case in input as long as we use 0,0,0,0 for the
+				// transparent pixels.In output, we must un-scale by
+				// dividing the RGB components by A.  Note that the final
+				// value of A cannot be zero if the first input has A = 1
+				// (in fact it is always >= 0.75).
+
 				fixed4 col0 = tex2D(_MainTex, i.uv0);
 				fixed4 col1 = tex2D(_ExtraTex, i.uv1);
 				fixed4 col = lerp(col0, col1, col1.a);
+				col /= col.a;
 				return col;
 			}
 

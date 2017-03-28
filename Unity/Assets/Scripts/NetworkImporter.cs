@@ -288,25 +288,16 @@ public class NetworkImporter : MonoBehaviour {
     }
 
     Texture2D ImportSingleTexture(Color32[] palette, byte[] input_data, int width, int height, 
-                                  int scanline, int offset, out Color32 mean_color)
+                                  int scanline, int offset)
     {
-        int size = width * height;
-        Color32[] colors = new Color32[size];
-        int rr = 0, gg = 0, bb = 0;
+        Color32[] colors = new Color32[width * height];
         for (int y = 0; y < height; y++)
         {
             int base_src = offset + y * scanline;
             int base_dst = y * width;
             for (int x = 0; x < width; x++)
-            {
-                Color32 c = palette[input_data[base_src + x]];
-                colors[base_dst + x] = c;
-                rr += c.r;
-                gg += c.g;
-                bb += c.b;
-            }
+                colors[base_dst + x] = palette[input_data[base_src + x]];
         }
-        mean_color = new Color32((byte)(rr / size), (byte)(gg / size), (byte)(bb / size), 0);
 
         Texture2D tex2d = new Texture2D(width, height);
         tex2d.SetPixels32(colors);
@@ -326,21 +317,20 @@ public class NetworkImporter : MonoBehaviour {
 
             byte[] input_data = Convert.FromBase64String(texinfo.data);
             Material mat;
-            Color32 mean_color;
 
             if (texinfo.effect == "sky")
             {
                 int w2 = texinfo.width / 2;
                 
                 /* the right half */
-                Texture2D tex0 = ImportSingleTexture(palette, input_data, w2, texinfo.height, texinfo.width, w2, out mean_color);
+                Texture2D tex0 = ImportSingleTexture(palette, input_data, w2, texinfo.height, texinfo.width, w2);
 
                 /* the left half */
                 Color32[] palette_with_alpha = new Color32[256];
-                palette_with_alpha[0] = mean_color;
+                palette_with_alpha[0] = new Color32(0, 0, 0, 0);
                 for (int i = 1; i < 256; i++)
                     palette_with_alpha[i] = palette[i];
-                Texture2D tex1 = ImportSingleTexture(palette_with_alpha, input_data, w2, texinfo.height, texinfo.width, 0, out mean_color);
+                Texture2D tex1 = ImportSingleTexture(palette_with_alpha, input_data, w2, texinfo.height, texinfo.width, 0);
 
                 mat = Instantiate(skyMaterial);
                 mat.SetTexture("_MainTex", tex0);
@@ -348,7 +338,7 @@ public class NetworkImporter : MonoBehaviour {
             }
             else
             {
-                Texture2D tex2d = ImportSingleTexture(palette, input_data, texinfo.width, texinfo.height, texinfo.width, 0, out mean_color);
+                Texture2D tex2d = ImportSingleTexture(palette, input_data, texinfo.width, texinfo.height, texinfo.width, 0);
                 if (texinfo.effect == "water")
                     mat = Instantiate(waterMaterial);
                 else
