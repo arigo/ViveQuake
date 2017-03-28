@@ -24,9 +24,9 @@ class Edict(object):
     def __repr__(self):
         return 'Edict(%r)' % (self._index,)
 
-def edicts():
+def edicts(start=0):
     try:
-        i = 0
+        i = start
         while True:
             yield Edict(i)
             i += 1
@@ -143,14 +143,15 @@ class QuakeServer(object):
         return lightstyles
 
     def enum_snapshot_models(self):
-        for ed in edicts():
+        NULLVEC = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+        for ed in edicts(start=1):
             index = int(ed.modelindex)
-            if index <= 1:    # 0: removed or invisible edict; 1: world edict
-                continue
-
             # XXX use sv.model_precache instead
             try:
-                model = self.model_by_index[index]
+                if index <= 0:    # removed or invisible edict
+                    model = ""
+                else:
+                    model = self.model_by_index[index]
             except KeyError:
                 if ed.model.startswith('progs/') and ed.model.endswith('.mdl'):
                     model = ed.model[6:-4]
@@ -161,21 +162,30 @@ class QuakeServer(object):
                     model = ed.model[5:-4] + ',0'
                 else:
                     print "WARNING: model missing for %r" % (ed.model,)
-                    continue
+                    model = ""
                 self.model_by_index[index] = model
 
-            yield {
-                'model': model,
-                'frame': int(ed.frame),
-                'origin': map_vertex(ed.origin),
-                'angles': map_angles(ed.angles),
-            }
+            if model:
+                frame = ed.frame
+                org = map_vertex(ed.origin)
+                ang = map_angles(ed.angles)
+            else:
+                frame = 0.0
+                org = NULLVEC
+                ang = NULLVEC
+            yield [model,
+                   frame,
+                   org['x'], org['y'], org['z'],
+                   ang['x'], ang['y'], ang['z'],
+                   ]
 
     def get_snapshot(self):
-        return {
-            'edicts': list(self.enum_snapshot_models()),
-            'ls32': self.get_lightstyles(first=32),
-        }
+        lightstyles = self.get_lightstyles(first=32)
+        snapshot = [len(lightstyles)]
+        snapshot += lightstyles
+        for entry in self.enum_snapshot_models():
+            snapshot += entry
+        return snapshot
 
 
 if __name__ == "__main__":

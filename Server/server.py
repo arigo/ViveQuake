@@ -4,6 +4,8 @@ import sys
 import os
 import time
 import json
+import cStringIO
+import struct
 import tornado.ioloop
 import tornado.web
 import tornado.websocket
@@ -26,12 +28,11 @@ class Application(tornado.web.Application):
             (r"/level/([A-Za-z0-9_-]+)", LevelHandler),
             (r"/model/([A-Za-z0-9_,-]+)", ModelHandler),
             (r"/texture/([a-z0-9]+)", TextureHandler),
-            (r"/snapshot", SnapshotHandler),
-            (r"/websock", WebSockHandler),
+            (r"/websock/2", WebSockHandler),
         ]
         super(Application, self).__init__(handlers, static_path="static",
                                           compress_response=True)
-        self.websocks = set()
+        self.clients = {}
         #
         if len(sys.argv) > 1:
             args = sys.argv[1:]
@@ -45,10 +46,10 @@ class Application(tornado.web.Application):
 
     def invoke_periodic_callback(self):
         self.srv.host_frame()
-        if self.websocks:
+        if self.clients:
             snapshot = self.srv.get_snapshot()
-            for ws in self.websocks:
-                ws.write_message(snapshot)
+            for client in self.clients.values():
+                client.update_snapshot(snapshot)
 
 
 def write_json_response(handler, response):
@@ -88,21 +89,59 @@ class TextureHandler(tornado.web.RequestHandler):
         image = maploader.load_texture(texture_name)
         write_json_response(self, image)
 
-class SnapshotHandler(tornado.web.RequestHandler):
-    def get(self):
-        snapshot = app.srv.get_snapshot()
-        print time.time()
-        write_json_response(self, snapshot)
-
 class WebSockHandler(tornado.websocket.WebSocketHandler):
 
     def open(self):
         print "opening websock"
-        app.websocks.add(self)
+        app.clients[self] = Client(self)
 
     def on_close(self):
-        app.websocks.discard(self)
+        client = app.clients.pop(self)
+        client.close()
         print "closed websock"
+
+
+class Client(object):
+    def __init__(self, ws):
+        self.ws = ws
+        self.prev_snapshot = []
+
+    def update_snapshot(self, snapshot):
+        # Compress a list containing floats and strings, based on the
+        # previous-sent list.  Strings are supposed to change rarely.
+        # The compression sends just one bit for every item in the list
+        # that was not modified.
+        #
+        snapshot += [0.0] * ((-len(snapshot)) & 7)
+        prev_snapshot = self.prev_snapshot
+        if len(prev_snapshot) < len(snapshot):
+            prev_snapshot += [0.0] * (len(snapshot) - len(prev_snapshot))
+        #
+        f = cStringIO.StringIO()
+        header, header_bits, block = 0, 0, ""
+        #
+        for prev, entry in zip(prev_snapshot, snapshot):
+            if entry != prev:
+                header |= (1 << header_bits)
+                if isinstance(entry, str):
+                    nan_header = "\xff\xc0"
+                    block += nan_header + chr(len(entry)) + entry
+                else:
+                    if entry != entry:     # NaN?
+                        entry = 0.0
+                    block += struct.pack("!f", entry)
+            header_bits += 1
+            if header_bits == 8:
+                f.write(chr(header) + block)
+                header, header_bits, block = 0, 0, ""
+        #
+        assert header_bits == 0
+        self.prev_snapshot = snapshot
+        #
+        self.ws.write_message(f.getvalue())
+
+    def close(self):
+        pass
 
 
 def main():
