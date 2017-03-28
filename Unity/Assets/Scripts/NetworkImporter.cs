@@ -74,11 +74,17 @@ public class QEdict
     public Vector3 angles;
 }
 
-[Serializable]
-public class QSnapshot
+public struct SnapEntry
 {
-    public QEdict[] edicts;
-    public string[] ls32;
+    public float f;
+    public string s;
+    public int i { get { return (int)f; } }
+
+    public SnapEntry(float _f, string _s)
+    {
+        f = _f;
+        s = _s;
+    }
 }
 
 
@@ -98,7 +104,8 @@ public class NetworkImporter : MonoBehaviour {
     Dictionary<string, Material> materials;
     Dictionary<string, bool> models_importing;
     WebSocket ws;
-    volatile string lastUpdateMessage;
+    volatile SnapEntry[] currentUpdateMessage;
+    SnapEntry[] workUpdateMessage;
     List<GameObject> meshes, autorotating;
     List<QLight> varying_lights;
     string[] lightstyles;
@@ -185,10 +192,63 @@ public class NetworkImporter : MonoBehaviour {
         LoadLights(GetWorldModel());
         LoadEntity(worldObject, GetWorldModel());
 
-        ws = new WebSocket("ws://" + baseUrl + "/websock");
-        ws.OnMessage += (sender, e) => lastUpdateMessage = e.Data;
-        ws.OnError += (sender, e) => Debug.Log("WebSocket error: " + e.Message);
+        workUpdateMessage = new SnapEntry[0];
+        ws = new WebSocket("ws://" + baseUrl + "/websock/2");
+        ws.OnMessage += (sender, e) => AsyncDecompressMsg(e.RawData);
+        ws.OnError += (sender, e) => Debug.LogError("WebSocket error: " + e.Message);
         ws.ConnectAsync();
+    }
+
+    void AsyncDecompressMsg(byte[] data)
+    {
+        SnapEntry[] msg = workUpdateMessage;
+        int msgIndex = 0, srcIndex = 0;
+        int header = 0;
+
+        while (true)
+        {
+            if ((msgIndex & 7) == 0)
+            {
+                if (srcIndex == data.Length)
+                    break;
+                header = data[srcIndex++];
+
+                if (msgIndex == msg.Length)
+                {
+                    Array.Resize<SnapEntry>(ref workUpdateMessage, msgIndex + 8);
+                    msg = workUpdateMessage;
+                }
+            }
+
+            if ((header & 1) != 0)
+            {
+                if (data[srcIndex] == 0xff && data[srcIndex + 1] == 0xc0)
+                {
+                    /* a NaN header, meaning we get a string */
+                    int length = data[srcIndex + 2];
+                    string txt = System.Text.Encoding.UTF8.GetString(
+                        data, srcIndex + 3, length);
+                    srcIndex += 3 + length;
+                    msg[msgIndex] = new SnapEntry(0, txt);
+                }
+                else
+                {
+                    byte[] four_bytes = new byte[4];
+                    Array.Copy(data, srcIndex, four_bytes, 0, 4);
+                    srcIndex += 4;
+                    if (System.BitConverter.IsLittleEndian)
+                        Array.Reverse(four_bytes);
+                    float f = System.BitConverter.ToSingle(four_bytes, 0);
+                    msg[msgIndex] = new SnapEntry(f, null);
+                }
+            }
+            header >>= 1;
+            msgIndex++;
+        }
+
+        SnapEntry[] msg_copy = new SnapEntry[msg.Length];
+        Array.Copy(msg, msg_copy, msg.Length);
+        currentUpdateMessage = msg_copy;   /* volatile, grabbed in Update */
     }
 
     QModel GetWorldModel()
@@ -383,34 +443,45 @@ public class NetworkImporter : MonoBehaviour {
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
    }
 
-    void NetworkUpdateData(string msg)
+    void NetworkUpdateData(SnapEntry[] msg)
     {
-        QSnapshot snapshot = JsonUtility.FromJson<QSnapshot>(msg);
-
         foreach (GameObject go in meshes)
             Destroy(go);
         meshes.Clear();
         autorotating.Clear();
 
-        for (int i = 0; i < snapshot.ls32.Length; i++)
-            lightstyles[32 + i] = snapshot.ls32[i];
+        int num_lightstyles = msg[0].i;
+        for (int i = 0; i < num_lightstyles; i++)
+            lightstyles[32 + i] = msg[1 + i].s;
 
-        foreach (QEdict ed in snapshot.edicts)
+        for (int msgIndex = 1 + num_lightstyles; msgIndex < msg.Length; msgIndex += 8)
         {
-            if (!models_importing.ContainsKey(ed.model))
-            {
-                models_importing[ed.model] = true;
-                StartCoroutine(ImportModel(ed.model).GetEnumerator());
-            }
-            if (!models.ContainsKey(ed.model))
+            string m_model = msg[msgIndex].s;
+            if (m_model == null || m_model.Length == 0)
                 continue;
+
+            if (!models_importing.ContainsKey(m_model))
+            {
+                models_importing[m_model] = true;
+                StartCoroutine(ImportModel(m_model).GetEnumerator());
+            }
+            if (!models.ContainsKey(m_model))
+                continue;
+
+            int m_frame = msg[msgIndex + 1].i;
+            Vector3 m_origin = new Vector3(msg[msgIndex + 2].f,
+                                           msg[msgIndex + 3].f,
+                                           msg[msgIndex + 4].f);
+            Vector3 m_angles = new Vector3(msg[msgIndex + 5].f,
+                                           msg[msgIndex + 6].f,
+                                           msg[msgIndex + 7].f);
 
             GameObject go = Instantiate(meshPrefab, worldObject.transform, false);
             meshes.Add(go);
-            QModel model = models[ed.model];
-            SetPositionAngles(go.transform, ed.origin, ed.angles);
-            LoadEntity(go, model, ed.frame);
-            if (model.autorotate != 0)
+            QModel qmodel = models[m_model];
+            SetPositionAngles(go.transform, m_origin, m_angles);
+            LoadEntity(go, qmodel, m_frame);
+            if (qmodel.autorotate != 0)
                 autorotating.Add(go);
         }
     }
@@ -471,9 +542,9 @@ public class NetworkImporter : MonoBehaviour {
 
     private void Update()
     {
-        if (lastUpdateMessage != null)
+        if (currentUpdateMessage != null)
         {
-            string msg = Interlocked.Exchange<string>(ref lastUpdateMessage, null);
+            SnapEntry[] msg = Interlocked.Exchange<SnapEntry[]>(ref currentUpdateMessage, null);
             NetworkUpdateData(msg);
         }
 
