@@ -125,6 +125,7 @@ public class NetworkImporter : MonoBehaviour {
     public Material waterMaterial;
     public GameObject meshPrefab;
     public GameObject lightPrefab;
+    public ParticleSystem[] particleSystems;
 
     QHello level_info;
     Dictionary<string, QModel> models;
@@ -457,8 +458,17 @@ public class NetworkImporter : MonoBehaviour {
     {
         QLight qlight = new QLight();
         qlight.origin = Vector3.zero;
-        qlight.light = lightlevel;
+        qlight.light = lightlevel * 1.5f;    // looks better this way
         AddLight(qlight, 1, go.transform);
+    }
+
+    void LoadRocketTrail(GameObject go, int particle_system_index)
+    {
+        ParticleSystem ps = particleSystems[particle_system_index];
+        ParticleSystem.EmitParams emitParams = new ParticleSystem.EmitParams();
+        emitParams.applyShapeToPosition = true;
+        emitParams.position = go.transform.TransformVector(ps.transform.InverseTransformVector(go.transform.position));
+        ps.Emit(emitParams, 10);
     }
 
     void LoadEntity(GameObject go, QModel model, int frameindex=0)
@@ -532,13 +542,13 @@ public class NetworkImporter : MonoBehaviour {
                 go.GetComponent<MeshCollider>().convex = true;
                 go.GetComponent<MeshCollider>().isTrigger = true;
             }
+            entities.Add(new Entity(qmodel, go));
 
             if ((qmodel.flags & QModel.EF_ROCKET) != 0)
             {
                 LoadDynamicLight(go, 200);
+                LoadRocketTrail(go, 0);
             }
-
-            entities.Add(new Entity(qmodel, go));
         }
     }
 
