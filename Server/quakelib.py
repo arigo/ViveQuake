@@ -92,6 +92,18 @@ def initialize():
     print 'Python initialized'
 
 
+class StaticEntity(object):
+    solid = lib.SOLID_NOT
+    effects = 0
+
+    def __init__(self, se):
+        self.modelindex = se.modelindex
+        self.model = ffi.string(se.model)
+        self.frame = se.frame
+        self.origin = tuple(se.origin)
+        self.angles = tuple(se.angles)
+
+
 # ------------------------------------------------------------
 
 
@@ -123,7 +135,7 @@ class QuakeServer(object):
         elif delay > 0.1:
             delay = 0.1
         #print "%.3f host frame" % delay
-        lib.Host_Frame(delay)
+        lib.PQuake_Host_Frame(delay)
 
     def get_level_model_name(self):
         res = Edict(0).model
@@ -139,15 +151,21 @@ class QuakeServer(object):
     def get_lightstyles(self, first=0):
         lightstyles = []
         for p in lib.sv.lightstyles[first : len(lib.sv.lightstyles)]:
-            lightstyles.append(ffi.string(p) if p else "m")
+            lightstyles.append(ffi.string(p) if p else "a")
         return lightstyles
+
+    def enum_static_entities(self):
+        n = lib.pquake_count_staticentities()
+        for i in range(n):
+            yield StaticEntity(lib.pquake_staticentities[i])
 
     def enum_snapshot_models(self):
         NULLVEC = {'x': 0.0, 'y': 0.0, 'z': 0.0}
         SOLID2FLAGS = {lib.SOLID_NOT:     0x1000,
                        lib.SOLID_TRIGGER: 0x2000}
         #
-        for ed in edicts(start=1):
+        for ed in (list(self.enum_static_entities()) +
+                   list(edicts(start=1))):
             index = int(ed.modelindex)
             # XXX use sv.model_precache instead
             try:
@@ -195,7 +213,10 @@ class QuakeServer(object):
 
 if __name__ == "__main__":
     srv = QuakeServer(sys.argv[1:])
-    import pdb;pdb.set_trace()
+    n = 2
     while True:
         time.sleep(0.1)
         srv.host_frame()
+        n -= 1
+        if n == 0:
+            import pdb;pdb.set_trace()

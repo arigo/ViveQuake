@@ -447,15 +447,14 @@ class QBsp(QData):
         ]
 
 class QFrame:
-##    FIELDS = [
-##        ('bboxmin',        FTrivertx()),
-##        ('bboxmax',        FTrivertx()),
-##        ('name',           FCharPtr(16)),
-##        ('v',              FArrayOf(FTrivertx())),
-##        ]
     def __init__(self, name, v):
         self.name = name
         self.v = v
+
+class QFrameGroup:
+    def __init__(self, times, frames):
+        self.times = times
+        self.frames = frames
 
 class QMdl(QData):
     FIELDS = [
@@ -666,18 +665,29 @@ class QMdl(QData):
             self.triangles.append((p1, p2, p3, bool(front)))
         self.frames = []
         for i in range(self.numframes_):
-            frametype = f.read(4)
-            assert frametype == '\x00'*4
-            f.read(8)   # ignore bboxmin, bboxmax
-            name = FCharPtr(16).read(f, None)
-            v = []
-            for i in range(self.numverts_):
-                x, y, z, l = struct.unpack("BBBB", f.read(4))
-                x = self.scale_origin[0] + x*self.scale[0]
-                y = self.scale_origin[1] + y*self.scale[1]
-                z = self.scale_origin[2] + z*self.scale[2]
-                v.append((x, y, z, l))
-            self.frames.append(QFrame(name, v))
+            frametype, = struct.unpack("<i", f.read(4))
+
+            def read_frame():
+                f.read(8)   # ignore bboxmin, bboxmax
+                name = FCharPtr(16).read(f, None)
+                v = []
+                for i in range(self.numverts_):
+                    x, y, z, l = struct.unpack("BBBB", f.read(4))
+                    x = self.scale_origin[0] + x*self.scale[0]
+                    y = self.scale_origin[1] + y*self.scale[1]
+                    z = self.scale_origin[2] + z*self.scale[2]
+                    v.append((x, y, z, l))
+                return QFrame(name, v)
+
+            if frametype == 0:
+                frame_or_group = read_frame()
+            else:
+                nb, = struct.unpack("<i", f.read(4))
+                f.read(8)   # ignore global bboxmin, bboxmax
+                times = [struct.unpack("<f", f.read(4))[0] for t in range(nb)]
+                frames = [read_frame() for t in range(nb)]
+                frame_or_group = QFrameGroup(times, frames)
+            self.frames.append(frame_or_group)
 
     def fix(self):
         allv = []
