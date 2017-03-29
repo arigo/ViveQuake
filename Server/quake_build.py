@@ -9,7 +9,10 @@ ffibuilder = cffi.FFI()
 
 ffibuilder.cdef("""
     void PQuake_Ready(int c, char **v);
-    void Host_Frame(float frame_time);
+    void PQuake_Host_Frame(float frame_time);
+
+    typedef float vec_t;
+    typedef vec_t vec3_t[3];
 
     #define DEF_SAVEGLOBAL ...
     enum {ev_void, ev_string, ev_float, ev_vector, ev_entity, ev_field,
@@ -54,6 +57,14 @@ ffibuilder.cdef("""
 
     #define SOLID_NOT		...		// no interaction with other objects
     #define SOLID_TRIGGER	...		// touch on edge, but not blocking
+
+    struct pquake_staticentity_s {
+        char *model;
+        int modelindex, frame, colormap, skin;
+        vec3_t origin, angles;
+    };
+    struct pquake_staticentity_s pquake_staticentities[];
+    int pquake_count_staticentities(void);
 """)
 
 ffibuilder.set_source("_quake", r"""
@@ -173,9 +184,13 @@ ffibuilder.set_source("_quake", r"""
         return (eval_t *)((int *)&ed->v + fieldindex);
     }
 
+    static void hack_makestatic(void);
+
     void PQuake_Ready(int argc, char **argv)
     {
         static quakeparms_t    parms;
+
+        hack_makestatic();
 
         parms.memsize = 8*1024*1024;
         parms.membase = malloc (parms.memsize);
@@ -188,6 +203,82 @@ ffibuilder.set_source("_quake", r"""
 
         printf ("Host_Init\n");
         Host_Init (&parms);
+    }
+
+    static long host_frame_time = 0;    /* a random, strictly increasing num */
+
+    void PQuake_Host_Frame(float frame_time)
+    {
+        host_frame_time++;
+        Host_Frame(frame_time);
+    }
+
+    typedef void (*builtin_t) (void);
+    extern	builtin_t *pr_builtins;
+    extern int pr_numbuiltins;
+    extern void PF_makestatic(void);
+
+    struct pquake_staticentity_s {
+        char *model;
+        int modelindex, frame, colormap, skin;
+        vec3_t origin, angles;
+    };
+    struct pquake_staticentity_s pquake_staticentities[MAX_STATIC_ENTITIES];
+    int pquake_num_staticentities;
+    float last_server_time = 1e100;
+
+    static void maybe_server_load(void)
+    {
+        if (sv.time < last_server_time)
+        {
+            /* we are in the initial frame of a new server loading */
+            pquake_num_staticentities = 0;
+        }
+        last_server_time = sv.time;
+    }
+
+    int pquake_count_staticentities(void)
+    {
+        maybe_server_load();
+        return pquake_num_staticentities;
+    }
+
+    static void PQuake_PF_makestatic (void)
+    {
+        edict_t *ent;
+        int i;
+        struct pquake_staticentity_s *se;
+
+        maybe_server_load();
+        ent = G_EDICT(OFS_PARM0);
+
+        if (pquake_num_staticentities < MAX_STATIC_ENTITIES)
+        {
+            se = &pquake_staticentities[pquake_num_staticentities++];
+            se->model = pr_strings + ent->v.model;
+            se->modelindex = SV_ModelIndex(se->model);
+            se->frame = ent->v.frame;
+            se->colormap = ent->v.colormap;
+            se->skin = ent->v.skin;
+            for (i = 0; i < 3; i++) {
+                se->origin[i] = ent->v.origin[i];
+                se->angles[i] = ent->v.angles[i];
+            }
+        }
+        else {
+            fprintf(stderr, "quake_build.py: too many static entities!\n");
+        }
+        PF_makestatic();
+    }
+
+    static void hack_makestatic(void)
+    {
+        int i;
+        for (i = 0; i < pr_numbuiltins; i++)
+        {
+            if (pr_builtins[i] == &PF_makestatic)
+                pr_builtins[i] = &PQuake_PF_makestatic;
+        }
     }
 """,
     sources='''

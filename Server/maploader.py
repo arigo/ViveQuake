@@ -3,7 +3,7 @@ import qdata
 import array
 
 
-MAPDATA_VERSION = 11
+MAPDATA_VERSION = 13
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -149,7 +149,7 @@ def load_bsp_model(bsp, model):
 
     #print len(_vertex_cache)
     return {
-        'frames': [{'v': r_vertices, 'n': r_normals}],
+        'frames': [{'a': [{'v': r_vertices, 'n': r_normals}]}],
         'uvs': r_uvs,
         'faces': r_faces,
         'texturenames': r_texturenames,
@@ -243,14 +243,24 @@ def load_model(modelname):
         r_faces.append({'v': r_v, 't': 0})
 
     r_frames = []
-    for frame in mdl.frames:
+
+    def get_frame(frame, time=1):
         r_vertices = []
         r_normals = []
         for mdl_vindex in compressed:
             x, y, z, n = frame.v[mdl_vindex]
             r_vertices.append(map_vertex((x, y, z)))
             r_normals.append(map_vertex(mdl.Normals[n]))
-        r_frames.append({'v': r_vertices, 'n': r_normals})
+        return {'v': r_vertices, 'n': r_normals, 'time': time}
+
+    for frame_or_group in mdl.frames:
+        if isinstance(frame_or_group, qdata.QFrameGroup):
+            framedata = []
+            for fr, tm in zip(frame_or_group.frames, frame_or_group.times):
+                framedata.append(get_frame(fr, tm))
+        else:
+            framedata = [get_frame(frame_or_group)]
+        r_frames.append({'a': framedata})
 
     assert mdl.skins[0].w == mdl.skinwidth
     assert mdl.skins[0].h == mdl.skinheight
@@ -267,7 +277,8 @@ def load_model(modelname):
 
 if __name__ == '__main__':
     import pprint
-    m1 = load_level('e1m1')
+    m1 = load_model('flame')
+    #m1 = load_level('start')
     #pprint.pprint(m1['lights'])
     #pprint.pprint(load_texture(m1['texturenames'][0]))
     #pprint.pprint(load_model('dog'))
