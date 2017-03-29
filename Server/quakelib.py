@@ -188,6 +188,13 @@ class QuakeServer(object):
 
             if model:
                 frame = ed.frame
+                # format of the 'flags': this contains ed.effects,
+                # which is the EF_xxx flags defined in src/server.h;
+                # it is or'ed with some custom-valued flags based on
+                # SOLID_xxx.  Do not confuse these EF_xxx flags with
+                # the ones stored in the model, returned through the
+                # url path /model/xxx by server.py, which come from
+                # EF_xxx in src/model.h.
                 flags = SOLID2FLAGS.get(int(ed.solid), 0)
                 flags |= (int(ed.effects) & 0xFFF)
                 org = map_vertex(ed.origin)

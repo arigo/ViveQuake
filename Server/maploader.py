@@ -271,7 +271,7 @@ def load_model(modelname):
         'uvs': r_uvs,
         'faces': r_faces,
         'texturenames': r_texturenames,
-        'flags': mdl.flags,
+        'flags': mdl.flags,  # EF_xxx flags from src/model.h (not src/server.h!)
         }
 
 
