@@ -60,6 +60,7 @@ public class QModel
 
     public Material[] m_materials;
 
+    /* these are the EF_xxx coming from 'srv/model.h'. */
     public const int EF_ROCKET = 1;
     public const int EF_ROTATE = 8;
 }
@@ -85,6 +86,8 @@ public struct SnapEntry
         s = _s;
     }
 
+    /* the 'flags' argument is a combination of SOLID_xxx and the EF_xxx
+     * coming from 'srv/server.h'. */
     public const int SOLID_NOT     = 0x1000;
     public const int SOLID_TRIGGER = 0x2000;
 }
@@ -101,13 +104,13 @@ public class Entity
     }
 }
 
-public class VaryingLight
+public class DynamicLight
 {
     public QLight qlight;
     public GameObject go;
     public float light_factor;
 
-    public VaryingLight(QLight m_qlight) { qlight = m_qlight; }
+    public DynamicLight(QLight m_qlight) { qlight = m_qlight; }
 }
 
 
@@ -131,7 +134,7 @@ public class NetworkImporter : MonoBehaviour {
     volatile SnapEntry[] currentUpdateMessage;
     SnapEntry[] workUpdateMessage;
     List<Entity> entities;
-    List<VaryingLight> varying_lights;
+    List<DynamicLight> varying_lights;
     string[] lightstyles;
 
     const int LAYER_NOBLOCK = 8;
@@ -139,7 +142,7 @@ public class NetworkImporter : MonoBehaviour {
     private void Start()
     {
         entities = new List<Entity>();
-        varying_lights = new List<VaryingLight>();
+        varying_lights = new List<DynamicLight>();
 
         StartCoroutine(GetHelloWorld().GetEnumerator());
     }
@@ -450,6 +453,14 @@ public class NetworkImporter : MonoBehaviour {
         transform.localRotation = AnglesToQuaternion(angles);
     }
 
+    void LoadDynamicLight(GameObject go, float lightlevel)
+    {
+        QLight qlight = new QLight();
+        qlight.origin = Vector3.zero;
+        qlight.light = lightlevel;
+        AddLight(qlight, 1, go.transform);
+    }
+
     void LoadEntity(GameObject go, QModel model, int frameindex=0)
     {
         QFrame[] framegroup = model.frames[frameindex].a;
@@ -522,24 +533,28 @@ public class NetworkImporter : MonoBehaviour {
                 go.GetComponent<MeshCollider>().isTrigger = true;
             }
 
+            if ((qmodel.flags & QModel.EF_ROCKET) != 0)
+            {
+                LoadDynamicLight(go, 200);
+            }
+
             entities.Add(new Entity(qmodel, go));
         }
     }
 
-    void AddLight(VaryingLight target, float light_factor)
+    GameObject AddLight(QLight light, float light_factor, Transform parent=null)
     {
         float range_max = worldObject.transform.lossyScale.magnitude;
 
-        QLight light = target.qlight;
-        GameObject go = Instantiate(lightPrefab, worldObject.transform, false);
+        if (parent == null)
+            parent = worldObject.transform;
+        GameObject go = Instantiate(lightPrefab, parent, false);
         go.transform.localPosition = light.origin;
 
         Light component = go.GetComponent<Light>();
         component.range = range_max * light.light;
         component.intensity *= light.light * light_factor;
-
-        target.go = go;
-        target.light_factor = light_factor;
+        return go;
     }
 
     void LoadLights(QModel world)
@@ -548,10 +563,15 @@ public class NetworkImporter : MonoBehaviour {
 
         foreach (QLight light in world.lights)
         {
-            VaryingLight varying_light = new VaryingLight(light);
-            AddLight(varying_light, GetLightFactor(light.style));
+            float light_factor = GetLightFactor(light.style);
+            GameObject go = AddLight(light, light_factor);
             if (IsVaryingLightLevel(light.style))
+            {
+                DynamicLight varying_light = new DynamicLight(light);
+                varying_light.go = go;
+                varying_light.light_factor = light_factor;
                 varying_lights.Add(varying_light);
+            }
         }
     }
 
@@ -598,14 +618,15 @@ public class NetworkImporter : MonoBehaviour {
                 entity.go.transform.localRotation = objrotate;
         }
 
-        foreach (VaryingLight light in varying_lights)
+        foreach (DynamicLight light in varying_lights)
         {
             QLight qlight = light.qlight;
             float factor = GetLightFactor(qlight.style);
             if (factor != light.light_factor)
             {
                 Destroy(light.go);
-                AddLight(light, factor);
+                light.go = AddLight(qlight, factor);
+                light.light_factor = factor;
             }
         }
 
