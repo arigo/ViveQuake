@@ -28,6 +28,15 @@ public class QFrame
 {
     public Vector3[] v;   /* vertices position */
     public Vector3[] n;   /* list of normals, same length */
+    public float time;
+
+    public Mesh m_mesh;
+}
+
+[Serializable]
+public class QFrameGroup
+{
+    public QFrame[] a;
 }
 
 [Serializable]
@@ -36,15 +45,12 @@ public class QLight
     public Vector3 origin;
     public float light;
     public int style;
-
-    public GameObject m_light;
-    public float m_factor;
 }
 
 [Serializable]
 public class QModel
 {
-    public QFrame[] frames;
+    public QFrameGroup[] frames;
     public Vector2[] uvs;
     public QFace[] faces;
     public string[] texturenames;
@@ -52,9 +58,9 @@ public class QModel
     public Color32[] palette;    // only on world models
     public QLight[] lights;       // only on world models
 
-    public Mesh[] m_meshes;
     public Material[] m_materials;
 
+    public const int EF_ROCKET = 1;
     public const int EF_ROTATE = 8;
 }
 
@@ -65,15 +71,6 @@ public class QHello
     public string level;
     public Vector3 start_pos;
     public string[] lightstyles;
-}
-
-[Serializable]
-public class QEdict
-{
-    public string model;
-    public int frame;
-    public Vector3 origin;
-    public Vector3 angles;
 }
 
 public struct SnapEntry
@@ -90,6 +87,27 @@ public struct SnapEntry
 
     public const int SOLID_NOT     = 0x1000;
     public const int SOLID_TRIGGER = 0x2000;
+}
+
+public class Entity
+{
+    public QModel qmodel;
+    public GameObject go;
+
+    public Entity(QModel m_qmodel, GameObject m_go)
+    {
+        qmodel = m_qmodel;
+        go = m_go;
+    }
+}
+
+public class VaryingLight
+{
+    public QLight qlight;
+    public GameObject go;
+    public float light_factor;
+
+    public VaryingLight(QLight m_qlight) { qlight = m_qlight; }
 }
 
 
@@ -112,17 +130,16 @@ public class NetworkImporter : MonoBehaviour {
     WebSocket ws;
     volatile SnapEntry[] currentUpdateMessage;
     SnapEntry[] workUpdateMessage;
-    List<GameObject> meshes, autorotating;
-    List<QLight> varying_lights;
+    List<Entity> entities;
+    List<VaryingLight> varying_lights;
     string[] lightstyles;
 
     const int LAYER_NOBLOCK = 8;
 
     private void Start()
     {
-        meshes = new List<GameObject>();
-        autorotating = new List<GameObject>();
-        varying_lights = new List<QLight>();
+        entities = new List<Entity>();
+        varying_lights = new List<VaryingLight>();
 
         StartCoroutine(GetHelloWorld().GetEnumerator());
     }
@@ -361,10 +378,14 @@ public class NetworkImporter : MonoBehaviour {
 
     void ImportMeshes(QModel model)
     {
-        Mesh[] meshes = new Mesh[model.frames.Length];
         for (int i = 0; i < model.frames.Length; i++)
-            meshes[i] = ImportMesh(model, i);
-        model.m_meshes = meshes;
+        {
+            for (int j = 0; j < model.frames[i].a.Length; j++)
+            {
+                QFrame frame = model.frames[i].a[j];
+                frame.m_mesh = ImportMesh(model, frame);
+            }
+        }
 
         Material[] mat = new Material[model.texturenames.Length];
         for (int i = 0; i < mat.Length; i++)
@@ -372,11 +393,9 @@ public class NetworkImporter : MonoBehaviour {
         model.m_materials = mat;
     }
 
-    Mesh ImportMesh(QModel model, int frameindex)
+    Mesh ImportMesh(QModel model, QFrame frame)
     {
         /* note: this returns a new Mesh, computed independently, for each frame */
-        QFrame frame = model.frames[frameindex];
-
         int num_textures = model.texturenames.Length;
         int[][] triangles = new int[num_textures][];
 
@@ -433,7 +452,16 @@ public class NetworkImporter : MonoBehaviour {
 
     void LoadEntity(GameObject go, QModel model, int frameindex=0)
     {
-        Mesh mesh = model.m_meshes[frameindex];
+        QFrame[] framegroup = model.frames[frameindex].a;
+        int subindex = 0;
+        if (framegroup.Length > 1)    /* uncommon case */
+        {
+            float timemod = Time.time % framegroup[framegroup.Length - 1].time;
+            while (subindex < framegroup.Length - 1 && framegroup[subindex].time <= timemod)
+                subindex++;
+        }
+
+        Mesh mesh = framegroup[subindex].m_mesh;
         MeshRenderer rend = go.GetComponent<MeshRenderer>();
         if (rend.materials != model.m_materials)
             rend.materials = model.m_materials;
@@ -443,10 +471,12 @@ public class NetworkImporter : MonoBehaviour {
 
     void NetworkUpdateData(SnapEntry[] msg)
     {
-        foreach (GameObject go in meshes)
-            Destroy(go);
-        meshes.Clear();
-        autorotating.Clear();
+        foreach (Entity entity in entities)
+        {
+            if (entity.go != null)
+                Destroy(entity.go);
+        }
+        entities.Clear();
 
         int num_lightstyles = msg[0].i;
         for (int i = 0; i < num_lightstyles; i++)
@@ -476,7 +506,6 @@ public class NetworkImporter : MonoBehaviour {
                                            msg[msgIndex + 8].f);
 
             GameObject go = Instantiate(meshPrefab, worldObject.transform, false);
-            meshes.Add(go);
             QModel qmodel = models[m_model];
             SetPositionAngles(go.transform, m_origin, m_angles);
             LoadEntity(go, qmodel, m_frame);
@@ -492,15 +521,16 @@ public class NetworkImporter : MonoBehaviour {
                 go.GetComponent<MeshCollider>().convex = true;
                 go.GetComponent<MeshCollider>().isTrigger = true;
             }
-            if ((qmodel.flags & QModel.EF_ROTATE) != 0)
-                autorotating.Add(go);
+
+            entities.Add(new Entity(qmodel, go));
         }
     }
 
-    void AddLight(QLight light, float light_factor)
+    void AddLight(VaryingLight target, float light_factor)
     {
         float range_max = worldObject.transform.lossyScale.magnitude;
 
+        QLight light = target.qlight;
         GameObject go = Instantiate(lightPrefab, worldObject.transform, false);
         go.transform.localPosition = light.origin;
 
@@ -508,8 +538,8 @@ public class NetworkImporter : MonoBehaviour {
         component.range = range_max * light.light;
         component.intensity *= light.light * light_factor;
 
-        light.m_light = go;
-        light.m_factor = light_factor;
+        target.go = go;
+        target.light_factor = light_factor;
     }
 
     void LoadLights(QModel world)
@@ -518,9 +548,10 @@ public class NetworkImporter : MonoBehaviour {
 
         foreach (QLight light in world.lights)
         {
-            AddLight(light, GetLightFactor(light.style));
+            VaryingLight varying_light = new VaryingLight(light);
+            AddLight(varying_light, GetLightFactor(light.style));
             if (IsVaryingLightLevel(light.style))
-                varying_lights.Add(light);
+                varying_lights.Add(varying_light);
         }
     }
 
@@ -559,16 +590,21 @@ public class NetworkImporter : MonoBehaviour {
             NetworkUpdateData(msg);
         }
 
-        Quaternion q = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
-        foreach (GameObject go in autorotating)
-            go.transform.localRotation = q;
-
-        foreach (QLight light in varying_lights)
+        Quaternion objrotate = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
+        foreach (Entity entity in entities)
         {
-            float factor = GetLightFactor(light.style);
-            if (factor != light.m_factor)
+            QModel qmodel = entity.qmodel;
+            if ((qmodel.flags & QModel.EF_ROTATE) != 0)
+                entity.go.transform.localRotation = objrotate;
+        }
+
+        foreach (VaryingLight light in varying_lights)
+        {
+            QLight qlight = light.qlight;
+            float factor = GetLightFactor(qlight.style);
+            if (factor != light.light_factor)
             {
-                Destroy(light.m_light);
+                Destroy(light.go);
                 AddLight(light, factor);
             }
         }
@@ -578,8 +614,9 @@ public class NetworkImporter : MonoBehaviour {
 
     void DebugShowNormals()
     {
-        foreach (GameObject go in meshes)
+        foreach (Entity entity in entities)
         {
+            GameObject go = entity.go;
             Mesh mesh = go.GetComponent<MeshFilter>().mesh;
             Vector3[] v = mesh.vertices;
             Vector3[] n = mesh.normals;
