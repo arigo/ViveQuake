@@ -53,8 +53,8 @@ public class QModel
     public QFrameGroup[] frames;
     public Vector2[] uvs;
     public QFace[] faces;
-    public QTexture skin;        // not on bsp's
-    public int flags;            // not on bsp's; see EF_XXX here
+    public QTexture[] skins;
+    public int flags;            // see EF_XXX here
 
     public Material[] m_materials;
 
@@ -125,7 +125,7 @@ public class DynamicLight
 public class NetworkImporter : MonoBehaviour {
 
     public string baseUrl = "192.168.0.10:8000";
-    const int WEBSOCK_VERSION = 3;
+    const int WEBSOCK_VERSION = 4;
 
     public GameObject worldObject;
     public Material worldMaterial;
@@ -228,8 +228,7 @@ public class NetworkImporter : MonoBehaviour {
 
         foreach (var model in world.models)
         {
-            ImportMeshes(model);
-            model.m_materials = mat;
+            ImportMeshes(model, mat);
         }
 
         models = new Dictionary<string, QModel>();
@@ -237,7 +236,7 @@ public class NetworkImporter : MonoBehaviour {
             models["*" + i] = world.models[i];
 
         foreach (var model_name in level_info.precache_models)
-            if (!models.Contains(model_name))
+            if (!models.ContainsKey(model_name))
                 foreach (var x in ImportModel(model_name))
                     yield return x;
 
@@ -375,44 +374,63 @@ public class NetworkImporter : MonoBehaviour {
         QModel model = new QModel();
         foreach (var x in DownloadJson("/model/" + model_name, model))
             yield return x;
-        ImportMeshes(model);
-        Material mat = ImportTexture(model.skin);
-        model.m_materials = new Material[] { mat };
+
+        Material[] mat = new Material[model.skins.Length];
+        for (int i = 0; i < model.skins.Length; i++)
+            mat[i] = ImportTexture(model.skins[i]);
+
+        ImportMeshes(model, mat);
         models[model_name] = model;
     }
 
-    void ImportMeshes(QModel model)
+    void ImportMeshes(QModel model, Material[] materials)
     {
+        int num_textures = materials.Length;
+
+        int[] countTriangles = new int[num_textures];
+        int[] submeshes = new int[num_textures];
+        for (int i = 0; i < num_textures; i++)
+            submeshes[i] = -1;
+
+        int num_submeshes = 0;
+        foreach (QFace face in model.faces)
+        {
+            if (submeshes[face.t] == -1)
+                submeshes[face.t] = num_submeshes++;
+            countTriangles[face.t] += face.v.Length - 2;
+        }
+
+        Material[] submaterials = new Material[num_submeshes];
+        int[][] triangles = new int[num_submeshes][];
+        for (int i = 0; i < num_textures; i++)
+            if (submeshes[i] >= 0)
+            {
+                submaterials[submeshes[i]] = materials[i];
+                triangles[submeshes[i]] = new int[countTriangles[i] * 3];
+                Debug.Assert(countTriangles[i] > 0);
+            }
+        model.m_materials = submaterials;
+
         for (int i = 0; i < model.frames.Length; i++)
         {
             for (int j = 0; j < model.frames[i].a.Length; j++)
             {
                 QFrame frame = model.frames[i].a[j];
-                frame.m_mesh = ImportMesh(model, frame);
+                frame.m_mesh = ImportMesh(model, frame, triangles, submeshes);
             }
         }
     }
 
-    Mesh ImportMesh(QModel model, QFrame frame)
+    Mesh ImportMesh(QModel model, QFrame frame, int[][] triangles, int[] submeshes)
     {
         /* note: this returns a new Mesh, computed independently, for each frame */
-        int num_textures = model.texturenames.Length;
-        int[][] triangles = new int[num_textures][];
 
-        int[] countTriangles = new int[num_textures];
+        int[] bb = new int[triangles.Length];
         foreach (QFace face in model.faces)
         {
-            countTriangles[face.t] += face.v.Length - 2;
-        }
-
-        for (int i = 0; i < num_textures; i++)
-            triangles[i] = new int[countTriangles[i] * 3];
-
-        int[] bb = new int[num_textures];
-        foreach (QFace face in model.faces)
-        {
-            int b = bb[face.t];
-            int[] tri = triangles[face.t];
+            int submesh = submeshes[face.t];
+            int b = bb[submesh];
+            int[] tri = triangles[submesh];
             int n = face.v.Length;
             Debug.Assert(n >= 3);
             for (int i = 0; i < n - 2; i++)
@@ -422,16 +440,19 @@ public class NetworkImporter : MonoBehaviour {
                 tri[b + 2] = face.v[i + 2];
                 b += 3;
             }
-            bb[face.t] = b;
+            bb[submesh] = b;
         }
 
         Mesh mesh = new Mesh();
-        mesh.subMeshCount = num_textures;
+        mesh.subMeshCount = triangles.Length;
         mesh.vertices = frame.v;
         mesh.uv = model.uvs;
         mesh.normals = frame.n;
-        for (int i = 0; i < num_textures; i++)
+        for (int i = 0; i < triangles.Length; i++)
+        {
+            Debug.Assert(triangles[i].Length > 0);
             mesh.SetTriangles(triangles[i], i);
+        }
         return mesh;
     }
 
@@ -499,7 +520,7 @@ public class NetworkImporter : MonoBehaviour {
         for (int i = 0; i < num_lightstyles; i++)
             lightstyles[32 + i] = msg[1 + i].s;
 
-        for (int msgIndex = 1 + num_lightstyles; msgIndex < msg.Length; msgIndex += 9)
+        for (int msgIndex = 3 + num_lightstyles; msgIndex < msg.Length; msgIndex += 9)
         {
             string m_model = msg[msgIndex].s;
             if (m_model == null || m_model.Length == 0)
@@ -508,6 +529,7 @@ public class NetworkImporter : MonoBehaviour {
             if (!models.ContainsKey(m_model))
             {
                 /* should not occur if precaching worked at 100% */
+                Debug.LogWarning("NOT PRECACHED: " + m_model);
                 models[m_model] = null;
                 StartCoroutine(ImportModel(m_model).GetEnumerator());
             }
