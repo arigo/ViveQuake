@@ -29,7 +29,7 @@ class Application(tornado.web.Application):
         handlers = [
             (r"/hello", HelloHandler),
             (r"/level/([A-Za-z0-9_-]+)", LevelHandler),
-            (r"/model/([A-Za-z0-9_,-]+)", ModelHandler),
+            (r"/model/([/.A-Za-z0-9_,-]+)", ModelHandler),
             (r"/websock/%d" % WEBSOCK_VERSION, WebSockHandler),
         ]
         super(Application, self).__init__(handlers, static_path="static",
