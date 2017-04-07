@@ -125,6 +125,33 @@ class QuakeServer(object):
                                (args[1:],))
         initialize()
         self.model_by_index = {}
+        self.client = None
+
+    def setup(self, playername="quake_player"):
+        for n in range(4):
+            if n == 1:
+                srv.spawn_client(playername=playername)
+            if n == 2:
+                srv.cmd("spawn")
+            time.sleep(0.1)
+            srv.host_frame()
+
+    def spawn_client(self, clientnum=0, playername=None):
+        assert 0 <= clientnum < lib.svs.maxclients
+        self.client_ed = Edict(clientnum + 1)
+        self.client = lib.svs.clients + clientnum
+        self.qsocket = ffi.new("qsocket_t *")
+        self.client.netconnection = self.qsocket
+        lib.SV_ConnectClient(clientnum)
+        if playername:
+            n = min(len(playername), len(self.client.name)-1)
+            for i in range(n):
+                self.client.name[i] = playername[i]
+            self.client.name[n] = '\x00'
+
+    def cmd(self, string):
+        lib.host_client = self.client
+        lib.Cmd_ExecuteString(string, lib.src_client)
 
     def host_frame(self, forced_delay=None):
         next_time = time.time()
@@ -154,6 +181,16 @@ class QuakeServer(object):
             lightstyles.append(ffi.string(p) if p else "a")
         return lightstyles
 
+    def get_precache_models(self):
+        precaches = []
+        for p in lib.sv.model_precache:
+            if p == ffi.NULL:
+                break
+            s = ffi.string(p)
+            if s.startswith('progs/') and s.endswith('.mdl'):
+                precaches.append(s[6:-4])
+        return precaches
+
     def enum_static_entities(self):
         n = lib.pquake_count_staticentities()
         for i in range(n):
@@ -167,7 +204,6 @@ class QuakeServer(object):
         for ed in (list(self.enum_static_entities()) +
                    list(edicts(start=1))):
             index = int(ed.modelindex)
-            # XXX use sv.model_precache instead
             try:
                 if index <= 0:    # removed or invisible edict
                     model = ""
@@ -177,10 +213,9 @@ class QuakeServer(object):
                 if ed.model.startswith('progs/') and ed.model.endswith('.mdl'):
                     model = ed.model[6:-4]
                 elif ed.model.startswith('*'):
-                    levelname = self.get_level_model_name()
-                    model = '%s,%d' % (levelname, ed.modelindex - 1)
-                elif ed.model.startswith('maps/') and ed.model.endswith('.bsp'):
-                    model = ed.model[5:-4] + ',0'
+                    model = ed.model
+                elif ed.model == 'maps/%s.bsp' % self.get_level_model_name():
+                    model = '*0'
                 else:
                     print "WARNING: model missing for %r" % (ed.model,)
                     model = ""
@@ -213,6 +248,15 @@ class QuakeServer(object):
         lightstyles = self.get_lightstyles(first=32)
         snapshot = [len(lightstyles)]
         snapshot += lightstyles
+
+        model = self.client_ed.weaponmodel or ""
+        if model.startswith('progs/') and model.endswith('.mdl'):
+            model = model[6:-4]
+        else:
+            model = ""
+        snapshot.append(model)
+        snapshot.append(self.client_ed.weaponframe)
+
         for entry in self.enum_snapshot_models():
             snapshot += entry
         return snapshot
@@ -220,10 +264,11 @@ class QuakeServer(object):
 
 if __name__ == "__main__":
     srv = QuakeServer(sys.argv[1:])
-    n = 2
+    srv.setup()
+    n = 0
     while True:
         time.sleep(0.1)
         srv.host_frame()
-        n -= 1
-        if n == 0:
-            import pdb;pdb.set_trace()
+        n += 1
+        #if n == 5:
+        #    import pdb;pdb.set_trace()

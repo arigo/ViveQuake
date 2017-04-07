@@ -17,7 +17,7 @@ import maploader
 import quakelib
 
 
-WEBSOCK_VERSION = 3
+WEBSOCK_VERSION = 4
 
 
 define("port", default=8000, help="run on the given port", type=int)
@@ -30,7 +30,6 @@ class Application(tornado.web.Application):
             (r"/hello", HelloHandler),
             (r"/level/([A-Za-z0-9_-]+)", LevelHandler),
             (r"/model/([A-Za-z0-9_,-]+)", ModelHandler),
-            (r"/texture/([a-z0-9]+)", TextureHandler),
             (r"/websock/%d" % WEBSOCK_VERSION, WebSockHandler),
         ]
         super(Application, self).__init__(handlers, static_path="static",
@@ -42,6 +41,7 @@ class Application(tornado.web.Application):
         else:
             args = ["+map", "e1m1"]
         self.srv = quakelib.QuakeServer(args)
+        self.srv.setup()
         #
         self.periodic_callback = tornado.ioloop.PeriodicCallback(
             self.invoke_periodic_callback, 100)     # 10 per second
@@ -70,6 +70,7 @@ class HelloHandler(tornado.web.RequestHandler):
             'level': level_name,
             'start_pos': maploader.map_vertex(start_pos),
             'lightstyles': app.srv.get_lightstyles(),
+            'precache_models': app.srv.get_precache_models(),
         }
         write_json_response(self, response)
 
@@ -80,17 +81,8 @@ class LevelHandler(tornado.web.RequestHandler):
 
 class ModelHandler(tornado.web.RequestHandler):
     def get(self, model_name):
-        if ',' not in model_name:
-            model = maploader.load_model(model_name)
-        else:
-            level_name, model_index = model_name.split(',')
-            model = maploader.load_bsp(level_name, int(model_index))
+        model = maploader.load_model(model_name)
         write_json_response(self, model)
-
-class TextureHandler(tornado.web.RequestHandler):
-    def get(self, texture_name):
-        image = maploader.load_texture(texture_name)
-        write_json_response(self, image)
 
 class WebSockHandler(tornado.websocket.WebSocketHandler):
 

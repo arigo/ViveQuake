@@ -16,7 +16,7 @@ public class QFace
 }
 
 [Serializable]
-public class QMipTex
+public class QTexture
 {
     public int width, height;
     public string data;
@@ -53,10 +53,8 @@ public class QModel
     public QFrameGroup[] frames;
     public Vector2[] uvs;
     public QFace[] faces;
-    public string[] texturenames;
-    public int flags;            // EF_XXX
-    public Color32[] palette;    // only on world models
-    public QLight[] lights;       // only on world models
+    public QTexture skin;        // not on bsp's
+    public int flags;            // not on bsp's; see EF_XXX here
 
     public Material[] m_materials;
 
@@ -66,12 +64,22 @@ public class QModel
 }
 
 [Serializable]
+public class QLevel
+{
+    public QModel[] models;
+    public Color32[] palette;
+    public QTexture[] textures;
+    public QLight[] lights;
+}
+
+[Serializable]
 public class QHello
 {
     public int version;
     public string level;
     public Vector3 start_pos;
     public string[] lightstyles;
+    public string[] precache_models;
 }
 
 public struct SnapEntry
@@ -128,9 +136,8 @@ public class NetworkImporter : MonoBehaviour {
     public ParticleSystem[] particleSystems;
 
     QHello level_info;
+    QLevel world;
     Dictionary<string, QModel> models;
-    Dictionary<string, Material> materials;
-    Dictionary<string, bool> models_importing;
     WebSocket ws;
     volatile SnapEntry[] currentUpdateMessage;
     SnapEntry[] workUpdateMessage;
@@ -209,17 +216,35 @@ public class NetworkImporter : MonoBehaviour {
         Debug.Log("Loading level " + level_info.level);
         Transform playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
         playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
-
-        models = new Dictionary<string, QModel>();
-        models_importing = new Dictionary<string, bool>();
-        materials = new Dictionary<string, Material>();
-
         lightstyles = level_info.lightstyles;
-        foreach (var x in ImportModel(level_info.level, "/level/"))
+
+        world = new QLevel();
+        foreach (var x in DownloadJson("/level/" + level_info.level, world))
             yield return x;
 
-        LoadLights(GetWorldModel());
-        LoadEntity(worldObject, GetWorldModel());
+        Material[] mat = new Material[world.textures.Length];
+        for (int i = 0; i < world.textures.Length; i++)
+            mat[i] = ImportTexture(world.textures[i]);
+
+        foreach (var model in world.models)
+        {
+            ImportMeshes(model);
+            model.m_materials = mat;
+        }
+
+        models = new Dictionary<string, QModel>();
+        for (int i = 0; i < world.models.Length; i++)
+            models["*" + i] = world.models[i];
+
+        foreach (var model_name in level_info.precache_models)
+            if (!models.Contains(model_name))
+                foreach (var x in ImportModel(model_name))
+                    yield return x;
+
+        /* now we should be done with all the DownloadJson() */
+
+        LoadLights();
+        LoadEntity(worldObject, world.models[0]);
 
         workUpdateMessage = new SnapEntry[0];
         ws = new WebSocket("ws://" + baseUrl + "/websock/" + WEBSOCK_VERSION);
@@ -280,11 +305,6 @@ public class NetworkImporter : MonoBehaviour {
         currentUpdateMessage = msg_copy;   /* volatile, grabbed in Update */
     }
 
-    QModel GetWorldModel()
-    {
-        return models[level_info.level];
-    }
-
     private void OnApplicationQuit()
     {
         if (ws != null)
@@ -292,28 +312,6 @@ public class NetworkImporter : MonoBehaviour {
             ws.CloseAsync();
             ws = null;
         }
-    }
-
-    IEnumerable ImportModel(string model_name, string baseurl="/model/")
-    {
-        if (!models.ContainsKey(model_name))
-        {
-            QModel model = new QModel();
-            foreach (var x in DownloadJson(baseurl + model_name, model))
-                yield return x;
-
-            Color32[] palette = model.palette;
-            if (palette == null || palette.Length == 0)
-                palette = GetWorldModel().palette;
-
-            for (int i = 0; i < model.texturenames.Length; i++)
-                foreach (var x in ImportTexture(model.texturenames[i], palette))
-                    yield return x;
-
-            ImportMeshes(model);
-            models[model_name] = model;
-        }
-        models_importing[model_name] = false;
     }
 
     Texture2D ImportSingleTexture(Color32[] palette, byte[] input_data, int width, int height, 
@@ -335,49 +333,52 @@ public class NetworkImporter : MonoBehaviour {
         return tex2d;
     }
 
-    IEnumerable ImportTexture(string texture_name, Color32[] palette)
+    Material ImportTexture(QTexture texinfo)
     {
-        if (!materials.ContainsKey(texture_name))
+        byte[] input_data = Convert.FromBase64String(texinfo.data);
+        Material mat;
+        Color32[] palette = world.palette;
+
+        if (texinfo.effect == "sky")
         {
-            QMipTex texinfo = new QMipTex();
-            foreach (var x in DownloadJson("/texture/" + texture_name, texinfo))
-                yield return x;
-            Debug.Log("Texture " + texture_name + ": " + texinfo.width + "x" + texinfo.height);
+            int w2 = texinfo.width / 2;
 
-            byte[] input_data = Convert.FromBase64String(texinfo.data);
-            Material mat;
+            /* the right half */
+            Texture2D tex0 = ImportSingleTexture(palette, input_data, w2, texinfo.height, texinfo.width, w2);
 
-            if (texinfo.effect == "sky")
-            {
-                int w2 = texinfo.width / 2;
-                
-                /* the right half */
-                Texture2D tex0 = ImportSingleTexture(palette, input_data, w2, texinfo.height, texinfo.width, w2);
+            /* the left half */
+            Color32[] palette_with_alpha = new Color32[256];
+            palette_with_alpha[0] = new Color32(0, 0, 0, 0);
+            for (int i = 1; i < 256; i++)
+                palette_with_alpha[i] = palette[i];
+            Texture2D tex1 = ImportSingleTexture(palette_with_alpha, input_data, w2, texinfo.height, texinfo.width, 0);
 
-                /* the left half */
-                Color32[] palette_with_alpha = new Color32[256];
-                palette_with_alpha[0] = new Color32(0, 0, 0, 0);
-                for (int i = 1; i < 256; i++)
-                    palette_with_alpha[i] = palette[i];
-                Texture2D tex1 = ImportSingleTexture(palette_with_alpha, input_data, w2, texinfo.height, texinfo.width, 0);
-
-                mat = Instantiate(skyMaterial);
-                mat.SetTexture("_MainTex", tex0);
-                mat.SetTexture("_ExtraTex", tex1);
-            }
-            else
-            {
-                Texture2D tex2d = ImportSingleTexture(palette, input_data, texinfo.width, texinfo.height, texinfo.width, 0);
-                if (texinfo.effect == "water")
-                    mat = Instantiate(waterMaterial);
-                else
-                    mat = Instantiate(worldMaterial);
-
-                mat.SetTexture("_MainTex", tex2d);
-            }
-
-            materials[texture_name] = mat;
+            mat = Instantiate(skyMaterial);
+            mat.SetTexture("_MainTex", tex0);
+            mat.SetTexture("_ExtraTex", tex1);
         }
+        else
+        {
+            Texture2D tex2d = ImportSingleTexture(palette, input_data, texinfo.width, texinfo.height, texinfo.width, 0);
+            if (texinfo.effect == "water")
+                mat = Instantiate(waterMaterial);
+            else
+                mat = Instantiate(worldMaterial);
+
+            mat.SetTexture("_MainTex", tex2d);
+        }
+        return mat;
+    }
+
+    IEnumerable ImportModel(string model_name)
+    {
+        QModel model = new QModel();
+        foreach (var x in DownloadJson("/model/" + model_name, model))
+            yield return x;
+        ImportMeshes(model);
+        Material mat = ImportTexture(model.skin);
+        model.m_materials = new Material[] { mat };
+        models[model_name] = model;
     }
 
     void ImportMeshes(QModel model)
@@ -390,11 +391,6 @@ public class NetworkImporter : MonoBehaviour {
                 frame.m_mesh = ImportMesh(model, frame);
             }
         }
-
-        Material[] mat = new Material[model.texturenames.Length];
-        for (int i = 0; i < mat.Length; i++)
-            mat[i] = materials[model.texturenames[i]];
-        model.m_materials = mat;
     }
 
     Mesh ImportMesh(QModel model, QFrame frame)
@@ -428,7 +424,7 @@ public class NetworkImporter : MonoBehaviour {
             }
             bb[face.t] = b;
         }
-        
+
         Mesh mesh = new Mesh();
         mesh.subMeshCount = num_textures;
         mesh.vertices = frame.v;
@@ -509,12 +505,14 @@ public class NetworkImporter : MonoBehaviour {
             if (m_model == null || m_model.Length == 0)
                 continue;
 
-            if (!models_importing.ContainsKey(m_model))
+            if (!models.ContainsKey(m_model))
             {
-                models_importing[m_model] = true;
+                /* should not occur if precaching worked at 100% */
+                models[m_model] = null;
                 StartCoroutine(ImportModel(m_model).GetEnumerator());
             }
-            if (!models.ContainsKey(m_model))
+            QModel qmodel = models[m_model];
+            if (qmodel == null)
                 continue;
 
             int m_frame = msg[msgIndex + 1].i;
@@ -527,7 +525,6 @@ public class NetworkImporter : MonoBehaviour {
                                            msg[msgIndex + 8].f);
 
             GameObject go = Instantiate(meshPrefab, worldObject.transform, false);
-            QModel qmodel = models[m_model];
             SetPositionAngles(go.transform, m_origin, m_angles);
             LoadEntity(go, qmodel, m_frame);
 
@@ -567,7 +564,7 @@ public class NetworkImporter : MonoBehaviour {
         return go;
     }
 
-    void LoadLights(QModel world)
+    void LoadLights()
     {
         varying_lights.Clear();
 

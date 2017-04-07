@@ -1,13 +1,10 @@
-import md5
 import qdata
 import array
 
 
-MAPDATA_VERSION = 13
+MAPDATA_VERSION = 14
 
 PAK0 = qdata.load('id1/pak0.pak')
-
-_textures_by_name = {}
 
 
 def map_vertex((x, y, z)):
@@ -33,11 +30,28 @@ def load_palette():
     return r_palette
 
 
-def load_level(levelname, model_index=0):
+def load_level(levelname):
     bsp = PAK0.content['maps/%s.bsp' % (levelname,)]
-    result = load_bsp_model(bsp, bsp.models[model_index])
+    result = {}
+
+    result['models'] = [load_bsp_model(bsp, model) for model in bsp.models]
 
     result['palette'] = load_palette()
+
+    r_textures = []
+    for texid, texnum in enumerate(bsp.textures):
+        tex = bsp.textures[texid]
+        assert tex.width == tex.mipmaps[0].w
+        assert tex.height == tex.mipmaps[0].h
+        r_texture = load_texture(tex.mipmaps[0])
+        if tex.name.startswith('sky'):
+            r_texture['effect'] = 'sky'
+        elif tex.name.startswith('*'):
+            r_texture['effect'] = 'water'
+        else:   # XXX if tex.name.startswith('+')... animated textures
+            pass
+        r_textures.append(r_texture)
+    result['textures'] = r_textures
 
     r_lights = []
     for entity in qdata.parse_entities(bsp.entities.rawdata):
@@ -57,11 +71,6 @@ def load_light(entity):
     if entity.get('style', 0) != 0:
         result['style'] = int(entity['style'])
     return result
-
-
-def load_bsp(bsp_name, model_index):
-    bsp = PAK0.content['maps/%s.bsp' % (bsp_name,)]
-    return load_bsp_model(bsp, bsp.models[model_index])
 
 
 def load_bsp_model(bsp, model):
@@ -85,7 +94,6 @@ def load_bsp_model(bsp, model):
     vertexes = bsp.vertexes.list
     edges = bsp.edges.list
     ledges = bsp.ledges.list
-    used_textures = {}
 
     r_faces = []
     for face in bsp.faces.list[model.face_id : model.face_id + model.face_num]:
@@ -121,38 +129,19 @@ def load_bsp_model(bsp, model):
         normal = bsp.planes[face.plane_id].normal
         side = 1.0 if face.side == 0 else -1.0
         normal = (side * normal[0], side * normal[1], side * normal[2])
-        texnum = used_textures.setdefault(texid, len(used_textures))
         for vlist in vlistlist:
             r_v = []
             for k, v in enumerate(vlist):
                 s = v[0] * s4[0] + v[1] * s4[1] + v[2] * s4[2] + s4[3]
                 t = v[0] * t4[0] + v[1] * t4[1] + v[2] * t4[2] + t4[3]
                 r_v.append(get_vertex(v, normal, s * i_width, t * i_height))
-            r_faces.append({'v': r_v, 't': texnum})
-
-    r_texturenames = []
-    used_textures = used_textures.items()
-    used_textures.sort(key = lambda (tid, num): num)
-    for texid, texnum in used_textures:
-        tex = bsp.textures[texid]
-        assert tex.width == tex.mipmaps[0].w
-        assert tex.height == tex.mipmaps[0].h
-        if tex.name.startswith('sky'):
-            extra = 'sky'
-        elif tex.name.startswith('*'):
-            extra = 'water'
-        else:
-            extra = None
-        hx = _get_texture_key(tex.mipmaps[0], extra=extra)
-        assert texnum == len(r_texturenames)
-        r_texturenames.append(hx)
+            r_faces.append({'v': r_v, 't': texid})
 
     #print len(_vertex_cache)
     return {
         'frames': [{'a': [{'v': r_vertices, 'n': r_normals}]}],
         'uvs': r_uvs,
         'faces': r_faces,
-        'texturenames': r_texturenames,
         }
 
 def triangulate(vlist):
@@ -194,23 +183,9 @@ def explode_into_smaller_faces(vlist, vlistlist):
         vlistlist.append(vlist)
 
 
-def load_texture(hx):
-    mipmap, extra = _textures_by_name[hx]
+def load_texture(mipmap):
     r_data = mipmap.data.encode('base64')
-    result = {'width': mipmap.w, 'height': mipmap.h, 'data': r_data}
-    if extra:
-        result['effect'] = extra
-    return result
-
-def _get_texture_key(mipmap, extra=None):
-    try:
-        return mipmap._hx_key
-    except AttributeError:
-        key = '%r %d %d %s' % (extra, mipmap.w, mipmap.h, mipmap.data)
-        hx = md5.md5(key).hexdigest()
-        mipmap._hx_key = hx
-        _textures_by_name.setdefault(hx, (mipmap, extra))
-        return hx
+    return {'width': mipmap.w, 'height': mipmap.h, 'data': r_data}
 
 
 def load_model(modelname):
@@ -264,13 +239,13 @@ def load_model(modelname):
 
     assert mdl.skins[0].w == mdl.skinwidth
     assert mdl.skins[0].h == mdl.skinheight
-    r_texturenames = [_get_texture_key(mdl.skins[0])]
+    r_skin = load_texture(mdl.skins[0])
 
     return {
         'frames': r_frames,
         'uvs': r_uvs,
         'faces': r_faces,
-        'texturenames': r_texturenames,
+        'skin': r_skin,
         'flags': mdl.flags,  # EF_xxx flags from src/model.h (not src/server.h!)
         }
 

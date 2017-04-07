@@ -13,6 +13,7 @@ ffibuilder.cdef("""
 
     typedef float vec_t;
     typedef vec_t vec3_t[3];
+    typedef enum {false, true} qboolean;
 
     #define DEF_SAVEGLOBAL ...
     enum {ev_void, ev_string, ev_float, ev_vector, ev_entity, ev_field,
@@ -32,6 +33,7 @@ ffibuilder.cdef("""
     typedef struct {
         int num_edicts;
         char *lightstyles[...];
+        char *model_precache[...];
         ...;
     } server_t;
 
@@ -65,6 +67,33 @@ ffibuilder.cdef("""
     };
     struct pquake_staticentity_s pquake_staticentities[];
     int pquake_count_staticentities(void);
+
+    typedef enum {
+        src_client,		// came in over a net connection as a clc_stringcmd
+                        // host_client will be valid during this state.
+        src_command		// from the command buffer
+    } cmd_source_t;
+    void Cmd_ExecuteString(char *text, cmd_source_t src);
+
+    typedef struct qsocket_s { ...; } qsocket_t;
+
+    typedef struct client_s
+    {
+        struct qsocket_s *netconnection;	// communications handle
+        char			name[32];			// for printing to other people
+        ...;
+    } client_t;
+    client_t *host_client;
+
+    typedef struct
+    {
+        int			maxclients;
+        struct client_s	*clients;		// [maxclients]
+        ...;
+    } server_static_t;
+    server_static_t	svs;
+
+    void SV_ConnectClient (int clientnum);
 """)
 
 ffibuilder.set_source("_quake", r"""
@@ -84,8 +113,6 @@ ffibuilder.set_source("_quake", r"""
     entity_t cl_temp_entities[MAX_TEMP_ENTITIES];
     float scr_centertime_off;
     cvar_t chase_active = {"chase_active", "0"};
-    int net_numdrivers = 0;
-    net_driver_t net_drivers[MAX_NET_DRIVERS];
     unsigned short d_8to16table[256];
     int r_pixbytes = 1;
     texture_t *r_notexture_mip;
@@ -280,6 +307,38 @@ ffibuilder.set_source("_quake", r"""
                 pr_builtins[i] = &PQuake_PF_makestatic;
         }
     }
+
+    static int net_dummy0(void) { return 0; }
+    static void net_dummy1(qboolean x) { }
+    static qsocket_t *net_dummy2(char *name) { return NULL; }
+    static qsocket_t *net_dummy3(void) { return NULL; }
+    static int net_dummy4(qsocket_t *sock) { return 0; }
+    static int net_dummy5(qsocket_t *sock, sizebuf_t *data) { return 1; }
+    static qboolean net_dummy6(qsocket_t *sock) { return true; }
+    static void net_dummy7(qsocket_t *sock) { }
+    static void net_dummy8(void) { }
+
+    int net_numdrivers = 1;
+    net_driver_t net_drivers[MAX_NET_DRIVERS] = {
+        {
+        "Unused",
+        false,
+        net_dummy0,
+        net_dummy1,
+        net_dummy1,
+        net_dummy2,
+        net_dummy3,
+        net_dummy4,
+        net_dummy5,
+        net_dummy5,
+        net_dummy6,
+        net_dummy6,
+        net_dummy7,
+        net_dummy8
+        }
+    };
+
+    extern void SV_ConnectClient (int clientnum);  /* sv_main.c */
 """,
     sources='''
         src/common.c
@@ -306,7 +365,8 @@ ffibuilder.set_source("_quake", r"""
         src/world.c
         src/crc.c
         src/wad.c
-    '''.split())
+    '''.split(),
+    extra_compile_args=['-g'])
 
 if len(sys.argv) > 1:
     os.system("grep -w %s %s" % (sys.argv[1], ' '.join(ffibuilder._assigned_source[3]['sources']))); sys.exit(0)
