@@ -134,6 +134,7 @@ public class NetworkImporter : MonoBehaviour {
     public GameObject meshPrefab;
     public GameObject lightPrefab;
     public ParticleSystem[] particleSystems;
+    public GameObject weaponController;
 
     QHello level_info;
     QLevel world;
@@ -144,6 +145,8 @@ public class NetworkImporter : MonoBehaviour {
     List<Entity> entities;
     List<DynamicLight> varying_lights;
     string[] lightstyles;
+    string current_weapon_model = "";
+    GameObject weapon_object;
 
     const int LAYER_NOBLOCK = 8;
 
@@ -507,6 +510,32 @@ public class NetworkImporter : MonoBehaviour {
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
+    void LoadWeapon(string weaponmodel, int weaponframe)
+    {
+        if (weaponmodel != current_weapon_model)
+        {
+            current_weapon_model = weaponmodel;
+            if (weapon_object == null)
+            {
+                weapon_object = Instantiate(meshPrefab, weaponController.transform, false);
+                weapon_object.layer = LAYER_NOBLOCK;
+                weapon_object.GetComponent<MeshCollider>().enabled = false;
+
+                /* XXX custom scaling here */
+                Transform tr = weapon_object.transform;
+                tr.localPosition = new Vector3(0, 0.25f, -0.4f);
+                tr.localRotation = Quaternion.Euler(0, -90, 0);
+                tr.localScale = Vector3.one * 0.04f;
+            }
+
+            weaponController.transform.Find("Model").gameObject.SetActive(weaponmodel == "");
+            weapon_object.SetActive(weaponmodel != "");
+        }
+
+        if (weaponmodel != "")
+            LoadEntity(weapon_object, models[weaponmodel], weaponframe);
+    }
+
     void NetworkUpdateData(SnapEntry[] msg)
     {
         foreach (Entity entity in entities)
@@ -519,6 +548,9 @@ public class NetworkImporter : MonoBehaviour {
         int num_lightstyles = msg[0].i;
         for (int i = 0; i < num_lightstyles; i++)
             lightstyles[32 + i] = msg[1 + i].s;
+
+        LoadWeapon(msg[1 + num_lightstyles].s,
+                   msg[1 + num_lightstyles].i);
 
         for (int msgIndex = 3 + num_lightstyles; msgIndex < msg.Length; msgIndex += 9)
         {
