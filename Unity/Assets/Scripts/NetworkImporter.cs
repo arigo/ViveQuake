@@ -203,8 +203,6 @@ public class NetworkImporter : MonoBehaviour {
         RemoveOldCachedFiles();
 
         Debug.Log("Loading level " + level_info.level);
-        Transform playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
-        playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
         lightstyles = level_info.lightstyles;
 
         world = new QLevel();
@@ -239,6 +237,12 @@ public class NetworkImporter : MonoBehaviour {
         ws.OnMessage += (sender, e) => AsyncDecompressMsg(e.RawData);
         ws.OnError += (sender, e) => Debug.LogError("WebSocket error: " + e.Message);
         ws.ConnectAsync();
+
+        /* disable all my children when the level is ready */
+        for (int i = 0; i < transform.childCount; i++)
+            transform.GetChild(i).gameObject.SetActive(false);
+        Transform playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
+        playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
     }
 
     void AsyncDecompressMsg(byte[] data)
