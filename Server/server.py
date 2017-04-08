@@ -86,20 +86,31 @@ class ModelHandler(tornado.web.RequestHandler):
 
 class WebSockHandler(tornado.websocket.WebSocketHandler):
 
+    #XXX check if on the Unity side compression is ok too
+    #def get_compression_options(self):
+    #    # Non-None enables compression with default options.
+    #    return {}
+
     def open(self):
         print "opening websock"
-        app.clients[self] = Client(self)
+        app.clients[self] = Client(self, app.srv)
 
     def on_close(self):
         client = app.clients.pop(self)
         client.close()
         print "closed websock"
 
+    def on_message(self, message):
+        client = app.clients[self]
+        message = message.split(' ')
+        getattr(client, 'gs_cmsg_' + message[0])(*message[1:])
+
 
 class Client(object):
-    def __init__(self, ws):
+    def __init__(self, ws, srv):
         self.ws = ws
         self.prev_snapshot = []
+        self.srv = srv
 
     def update_snapshot(self, snapshot):
         # Compress a list containing floats and strings, based on the
@@ -137,6 +148,10 @@ class Client(object):
 
     def close(self):
         pass
+
+    def gs_cmsg_tel(self, sx, sy, sz):
+        x, y, z = maploader.rev_map_vertex(float(sx), float(sy), float(sz))
+        self.srv.move_client(x, y, z)
 
 
 def main():

@@ -17,6 +17,10 @@ def map_angles((pitch, yaw, roll)):
     # (pitch, yaw, roll) in degrees
     return {'x': pitch, 'y': yaw, 'z': roll}
 
+def rev_map_vertex(x, z, y):
+    # reverse of map_vertex()
+    return (x, y, z)
+
 
 def load_palette():
     palettelmp = PAK0.content['gfx/palette.lmp']

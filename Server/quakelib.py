@@ -154,6 +154,10 @@ class QuakeServer(object):
         lib.host_client = self.client
         lib.Cmd_ExecuteString(string, lib.src_client)
 
+    def move_client(self, x, y, z):
+        if self.client_ed is not None:
+            lib.PQuake_setorigin(self.client_ed._index, x, y, z)
+
     def host_frame(self, forced_delay=None):
         next_time = time.time()
         delay = next_time - self.prev_time

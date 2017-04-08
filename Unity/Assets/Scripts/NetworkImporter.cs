@@ -586,6 +586,15 @@ public class NetworkImporter : MonoBehaviour {
         }
     }
 
+    void SendNetworkUpdates()
+    {
+        Vector3 pos = new Vector3(headset.transform.x,
+                                  playArea.transform.y;
+                                  headset.transform.z);
+        Vector3 origin = worldObject.transform.InverseTransformPoint(pos);
+        ws.Send("tel " + origin.x + " " + origin.y + " " + origin.z);
+    }
+
     public Light AddLight(Vector3 origin, float light, float light_factor, Transform parent=null)
     {
         Light result = Instantiate<Light>(lightPrefab, parent==null ? worldObject.transform : parent, false);
@@ -646,6 +655,8 @@ public class NetworkImporter : MonoBehaviour {
     {
         if (currentUpdateMessage != null)
         {
+            SendNetworkUpdates();
+
             SnapEntry[] msg = Interlocked.Exchange<SnapEntry[]>(ref currentUpdateMessage, null);
             NetworkUpdateData(msg);
         }
