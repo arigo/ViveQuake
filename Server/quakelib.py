@@ -126,6 +126,7 @@ class QuakeServer(object):
         initialize()
         self.model_by_index = {}
         self.client = None
+        self.client_ed = None
 
     def setup(self, playername="quake_player"):
         for n in range(4):
@@ -207,6 +208,8 @@ class QuakeServer(object):
         #
         for ed in (list(self.enum_static_entities()) +
                    list(edicts(start=1))):
+            if ed == self.client_ed:
+                continue
             index = int(ed.modelindex)
             try:
                 if index <= 0:    # removed or invisible edict

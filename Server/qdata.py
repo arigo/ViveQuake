@@ -416,6 +416,39 @@ class QPlanes(QData):
         ('list', FArray(QPlane)),
         ]
 
+class QNode(QData):
+    FIELDS = [
+        ('plane_id', FInt()),
+        ('front', FUShort()),
+        ('back', FUShort()),
+        ('box', FCharPtr(12)),  # bboxshort_t
+        ('face_id', FUShort()),
+        ('face_num', FUShort()),
+        ]
+
+class QNodes(QData):
+    FIELDS = [
+        ('list', FArray(QNode)),
+        ]
+
+class QLeaf(QData):
+    FIELDS = [
+        ('type', FInt()),
+        ('vislist', FInt()),
+        ('bound', FCharPtr(12)),  # bboxshort_t
+        ('lface_id', FUShort()),
+        ('lface_num', FUShort()),
+        ('sndwater', FUChar()),
+        ('sndsky', FUChar()),
+        ('sndslime', FUChar()),
+        ('sndlava', FUChar()),
+        ]
+
+class QLeafs(QData):
+    FIELDS = [
+        ('list', FArray(QLeaf)),
+        ]
+
 class QListOfInt(QData):
     FIELDS = [
         ('list', FArrayOf(FInt())),
@@ -434,12 +467,12 @@ class QBsp(QData):
         ('textures',  FLump(QTextures)),
         ('vertexes',  FLump(QListOfVec3)),
         ('visibility',  FLump(QData)),
-        ('nodes',  FLump(QData)),
+        ('nodes',  FLump(QNodes)),
         ('texinfo',  FLump(QTexinfos)),
         ('faces',  FLump(QBspFaces)),
         ('lighting',  FLump(QData)),
         ('clipnodes',  FLump(QData)),
-        ('leafs',  FLump(QData)),
+        ('leafs',  FLump(QLeafs)),
         ('lface',   FLump(QData)),
         ('edges',   FLump(QBspEdges)),
         ('ledges',  FLump(QListOfInt)),
