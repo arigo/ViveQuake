@@ -38,6 +38,18 @@ def load_level(levelname):
 
     result['palette'] = load_palette()
 
+    result['textures'] = load_bsp_textures(bsp)
+
+    r_lights = []
+    for entity in qdata.parse_entities(bsp.entities.rawdata):
+        if entity.get('classname', '').startswith('light'):
+            r_lights.append(load_light(entity))
+    result['lights'] = r_lights
+
+    return result
+
+
+def load_bsp_textures(bsp):
     r_textures = []
     for texid, texnum in enumerate(bsp.textures):
         tex = bsp.textures[texid]
@@ -51,15 +63,7 @@ def load_level(levelname):
         else:   # XXX if tex.name.startswith('+')... animated textures
             pass
         r_textures.append(r_texture)
-    result['textures'] = r_textures
-
-    r_lights = []
-    for entity in qdata.parse_entities(bsp.entities.rawdata):
-        if entity.get('classname', '').startswith('light'):
-            r_lights.append(load_light(entity))
-    result['lights'] = r_lights
-
-    return result
+    return r_textures
 
 
 def load_light(entity):
@@ -189,7 +193,12 @@ def load_texture(mipmap):
 
 
 def load_model(modelname):
-    mdl = PAK0.content['progs/%s.mdl' % (modelname,)]
+    assert modelname.endswith('.mdl') or modelname.endswith('.bsp')
+    mdl = PAK0.content[modelname]
+    if isinstance(mdl, qdata.QBsp):
+        result = load_bsp_model(mdl, mdl.models[0])
+        result['skins'] = load_bsp_textures(mdl)
+        return result
 
     i_width = 1.0 / mdl.skinwidth
     i_height = 1.0 / mdl.skinheight
@@ -237,22 +246,25 @@ def load_model(modelname):
             framedata = [get_frame(frame_or_group)]
         r_frames.append({'a': framedata})
 
-    assert mdl.skins[0].w == mdl.skinwidth
-    assert mdl.skins[0].h == mdl.skinheight
-    r_skin = load_texture(mdl.skins[0])
+    r_skins = []
+    for skin in mdl.skins:
+        assert skin.w == mdl.skinwidth
+        assert skin.h == mdl.skinheight
+        r_skins.append(load_texture(skin))
 
     return {
         'frames': r_frames,
         'uvs': r_uvs,
         'faces': r_faces,
-        'skin': r_skin,
+        'skins': r_skins,
         'flags': mdl.flags,  # EF_xxx flags from src/model.h (not src/server.h!)
         }
 
 
 if __name__ == '__main__':
     import pprint
-    m1 = load_model('flame')
+    #m1 = load_model('progs/flame.mdl')
+    m1 = load_model('maps/b_nail1.bsp')
     #m1 = load_level('start')
     #pprint.pprint(m1['lights'])
     #pprint.pprint(load_texture(m1['texturenames'][0]))

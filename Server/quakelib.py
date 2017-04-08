@@ -130,11 +130,11 @@ class QuakeServer(object):
     def setup(self, playername="quake_player"):
         for n in range(4):
             if n == 1:
-                srv.spawn_client(playername=playername)
+                self.spawn_client(playername=playername)
             if n == 2:
-                srv.cmd("spawn")
+                self.cmd("spawn")
             time.sleep(0.1)
-            srv.host_frame()
+            self.host_frame()
 
     def spawn_client(self, clientnum=0, playername=None):
         assert 0 <= clientnum < lib.svs.maxclients
@@ -169,6 +169,9 @@ class QuakeServer(object):
         assert res.startswith('maps/') and res.endswith('.bsp')
         return res[5:-4]
 
+    def get_full_level_path(self):
+        return Edict(0).model
+
     def get_player_start_position(self):
         for ed in edicts():
             if ed.classname == 'info_player_start':
@@ -187,8 +190,9 @@ class QuakeServer(object):
             if p == ffi.NULL:
                 break
             s = ffi.string(p)
-            if s.startswith('progs/') and s.endswith('.mdl'):
-                precaches.append(s[6:-4])
+            if s and s != self.get_full_level_path():
+                if not s.endswith('.spr'):   # XXX temporary
+                    precaches.append(s)
         return precaches
 
     def enum_static_entities(self):
@@ -210,15 +214,10 @@ class QuakeServer(object):
                 else:
                     model = self.model_by_index[index]
             except KeyError:
-                if ed.model.startswith('progs/') and ed.model.endswith('.mdl'):
-                    model = ed.model[6:-4]
-                elif ed.model.startswith('*'):
-                    model = ed.model
-                elif ed.model == 'maps/%s.bsp' % self.get_level_model_name():
+                if ed.model == self.get_full_level_path():
                     model = '*0'
                 else:
-                    print "WARNING: model missing for %r" % (ed.model,)
-                    model = ""
+                    model = ed.model
                 self.model_by_index[index] = model
 
             if model:
@@ -249,12 +248,7 @@ class QuakeServer(object):
         snapshot = [len(lightstyles)]
         snapshot += lightstyles
 
-        model = self.client_ed.weaponmodel or ""
-        if model.startswith('progs/') and model.endswith('.mdl'):
-            model = model[6:-4]
-        else:
-            model = ""
-        snapshot.append(model)
+        snapshot.append(self.client_ed.weaponmodel or "")
         snapshot.append(self.client_ed.weaponframe)
 
         for entry in self.enum_snapshot_models():
