@@ -100,22 +100,10 @@ public struct SnapEntry
     public const int SOLID_TRIGGER = 0x2000;
 }
 
-public class Entity
-{
-    public QModel qmodel;
-    public GameObject go;
-
-    public Entity(QModel m_qmodel, GameObject m_go)
-    {
-        qmodel = m_qmodel;
-        go = m_go;
-    }
-}
-
 public class DynamicLight
 {
     public QLight qlight;
-    public GameObject go;
+    public Light component;
     public float light_factor;
 
     public DynamicLight(QLight m_qlight) { qlight = m_qlight; }
@@ -131,8 +119,8 @@ public class NetworkImporter : MonoBehaviour {
     public Material worldMaterial;
     public Material skyMaterial;
     public Material waterMaterial;
-    public GameObject meshPrefab;
-    public GameObject lightPrefab;
+    public QuakeEntity entityPrefab;
+    public Light lightPrefab;
     public ParticleSystem[] particleSystems;
     public GameObject weaponController;
 
@@ -142,17 +130,15 @@ public class NetworkImporter : MonoBehaviour {
     WebSocket ws;
     volatile SnapEntry[] currentUpdateMessage;
     SnapEntry[] workUpdateMessage;
-    List<Entity> entities;
     List<DynamicLight> varying_lights;
     string[] lightstyles;
     string current_weapon_model = "";
-    GameObject weapon_object;
-
-    const int LAYER_NOBLOCK = 8;
+    QuakeEntity[] entities;
+    QuakeEntity weapon_entity;
 
     private void Start()
     {
-        entities = new List<Entity>();
+        entities = new QuakeEntity[0];
         varying_lights = new List<DynamicLight>();
 
         StartCoroutine(GetHelloWorld().GetEnumerator());
@@ -459,7 +445,7 @@ public class NetworkImporter : MonoBehaviour {
         return mesh;
     }
 
-    Quaternion AnglesToQuaternion(Vector3 angles)
+    public static Quaternion AnglesToQuaternion(Vector3 angles)
     {
         /* the 'angles' is provided as a vector in degrees, [pitch yaw roll] */
         Quaternion pitch = Quaternion.AngleAxis(angles[0], Vector3.right);
@@ -468,30 +454,16 @@ public class NetworkImporter : MonoBehaviour {
         return yaw * pitch * roll;
     }
 
-    void SetPositionAngles(Transform transform, Vector3 position, Vector3 angles)
-    {
-        transform.localPosition = position;
-        transform.localRotation = AnglesToQuaternion(angles);
-    }
-
-    void LoadDynamicLight(GameObject go, float lightlevel)
-    {
-        QLight qlight = new QLight();
-        qlight.origin = Vector3.zero;
-        qlight.light = lightlevel * 1.5f;    // looks better this way
-        AddLight(qlight, 1, go.transform);
-    }
-
-    void LoadRocketTrail(GameObject go, int particle_system_index)
+    void LoadRocketTrail(Transform tr, int particle_system_index)
     {
         ParticleSystem ps = particleSystems[particle_system_index];
         ParticleSystem.EmitParams emitParams = new ParticleSystem.EmitParams();
         emitParams.applyShapeToPosition = true;
-        emitParams.position = go.transform.TransformVector(ps.transform.InverseTransformVector(go.transform.position));
+        emitParams.position = tr.TransformVector(ps.transform.InverseTransformVector(tr.position));
         ps.Emit(emitParams, 10);
     }
 
-    void LoadEntity(GameObject go, QModel model, int frameindex=0)
+    public void LoadEntity(GameObject go, QModel model, int frameindex=0)
     {
         QFrame[] framegroup = model.frames[frameindex].a;
         int subindex = 0;
@@ -515,107 +487,101 @@ public class NetworkImporter : MonoBehaviour {
         if (weaponmodel != current_weapon_model)
         {
             current_weapon_model = weaponmodel;
-            if (weapon_object == null)
+            if (weapon_entity == null)
             {
-                weapon_object = Instantiate(meshPrefab, weaponController.transform, false);
-                weapon_object.layer = LAYER_NOBLOCK;
-                weapon_object.GetComponent<MeshCollider>().enabled = false;
-
+                weapon_entity = Instantiate<QuakeEntity>(entityPrefab, weaponController.transform, false);
+                weapon_entity.Setup(this);
+                weapon_entity.SetFlags(SnapEntry.SOLID_NOT);
+                
                 /* XXX custom scaling here */
-                Transform tr = weapon_object.transform;
+                Transform tr = weapon_entity.transform;
                 tr.localPosition = new Vector3(0, 0.25f, -0.4f);
                 tr.localRotation = Quaternion.Euler(0, -90, 0);
                 tr.localScale = Vector3.one * 0.04f;
             }
 
             weaponController.transform.Find("Model").gameObject.SetActive(weaponmodel == "");
-            weapon_object.SetActive(weaponmodel != "");
         }
+        weapon_entity.SetModel(GetQModel(weaponmodel), weaponframe);
+    }
 
-        if (weaponmodel != "")
-            LoadEntity(weapon_object, models[weaponmodel], weaponframe);
+    QModel GetQModel(string m_model)
+    {
+        if (m_model == "")
+            return null;
+        if (!models.ContainsKey(m_model))
+        {
+            /* should not occur if precaching worked at 100% */
+            Debug.LogWarning("NOT PRECACHED: " + m_model);
+            models[m_model] = null;
+            StartCoroutine(ImportModel(m_model).GetEnumerator());
+        }
+        return models[m_model];
     }
 
     void NetworkUpdateData(SnapEntry[] msg)
     {
-        foreach (Entity entity in entities)
-        {
-            if (entity.go != null)
-                Destroy(entity.go);
-        }
-        entities.Clear();
-
         int num_lightstyles = msg[0].i;
         for (int i = 0; i < num_lightstyles; i++)
             lightstyles[32 + i] = msg[1 + i].s;
+        int msgIndex = 1 + num_lightstyles;
 
-        LoadWeapon(msg[1 + num_lightstyles].s,
-                   msg[1 + num_lightstyles].i);
+        LoadWeapon(msg[msgIndex].s,
+                   msg[msgIndex].i);
+        msgIndex += 2;
 
-        for (int msgIndex = 3 + num_lightstyles; msgIndex < msg.Length; msgIndex += 9)
+        int num_entities = (msg.Length - msgIndex) / 9;
+        if (entities.Length < num_entities)
         {
+            int j = entities.Length;
+            Array.Resize<QuakeEntity>(ref entities, num_entities);
+            while (j < num_entities)
+            {
+                QuakeEntity entity = Instantiate<QuakeEntity>(entityPrefab, worldObject.transform, false);
+                entity.Setup(this);
+                entities[j++] = entity;
+            }
+        }
+
+        for (int i = 0; i < num_entities; i++, msgIndex += 9)
+        {
+            QuakeEntity entity = entities[i];
+
             string m_model = msg[msgIndex].s;
-            if (m_model == null || m_model.Length == 0)
-                continue;
-
-            if (!models.ContainsKey(m_model))
-            {
-                /* should not occur if precaching worked at 100% */
-                Debug.LogWarning("NOT PRECACHED: " + m_model);
-                models[m_model] = null;
-                StartCoroutine(ImportModel(m_model).GetEnumerator());
-            }
-            QModel qmodel = models[m_model];
-            if (qmodel == null)
-                continue;
-
             int m_frame = msg[msgIndex + 1].i;
-            int m_flags = msg[msgIndex + 2].i;
-            Vector3 m_origin = new Vector3(msg[msgIndex + 3].f,
-                                           msg[msgIndex + 4].f,
-                                           msg[msgIndex + 5].f);
-            Vector3 m_angles = new Vector3(msg[msgIndex + 6].f,
-                                           msg[msgIndex + 7].f,
-                                           msg[msgIndex + 8].f);
 
-            GameObject go = Instantiate(meshPrefab, worldObject.transform, false);
-            SetPositionAngles(go.transform, m_origin, m_angles);
-            LoadEntity(go, qmodel, m_frame);
+            QModel qmodel = GetQModel(m_model);
+            entity.SetModel(qmodel, m_frame);
 
-            if ((m_flags & SnapEntry.SOLID_NOT) != 0)
+            if (qmodel != null)
             {
-                go.layer = LAYER_NOBLOCK;
-                go.GetComponent<MeshCollider>().enabled = false;
-            }
-            else if ((m_flags & SnapEntry.SOLID_TRIGGER) != 0)
-            {
-                go.layer = LAYER_NOBLOCK;
-                go.GetComponent<MeshCollider>().convex = true;
-                go.GetComponent<MeshCollider>().isTrigger = true;
-            }
-            entities.Add(new Entity(qmodel, go));
+                int m_flags = msg[msgIndex + 2].i;
+                entity.SetFlags(m_flags);
 
-            if ((qmodel.flags & QModel.EF_ROCKET) != 0)
-            {
-                LoadDynamicLight(go, 200);
-                LoadRocketTrail(go, 0);
+                Vector3 m_origin = new Vector3(msg[msgIndex + 3].f,
+                                               msg[msgIndex + 4].f,
+                                               msg[msgIndex + 5].f);
+                Vector3 m_angles = new Vector3(msg[msgIndex + 6].f,
+                                               msg[msgIndex + 7].f,
+                                               msg[msgIndex + 8].f);
+
+                entity.SetPositionAngles(m_origin, m_angles);
+
+                if ((qmodel.flags & QModel.EF_ROCKET) != 0)
+                    LoadRocketTrail(entity.transform, 0);
             }
         }
     }
 
-    GameObject AddLight(QLight light, float light_factor, Transform parent=null)
+    public Light AddLight(Vector3 origin, float light, float light_factor, Transform parent=null)
     {
+        Light result = Instantiate<Light>(lightPrefab, parent==null ? worldObject.transform : parent, false);
+
         float range_max = worldObject.transform.lossyScale.magnitude;
-
-        if (parent == null)
-            parent = worldObject.transform;
-        GameObject go = Instantiate(lightPrefab, parent, false);
-        go.transform.localPosition = light.origin;
-
-        Light component = go.GetComponent<Light>();
-        component.range = range_max * light.light;
-        component.intensity *= light.light * light_factor;
-        return go;
+        result.transform.localPosition = origin;
+        result.range = range_max * light;
+        result.intensity *= light * light_factor;
+        return result;
     }
 
     void LoadLights()
@@ -625,11 +591,11 @@ public class NetworkImporter : MonoBehaviour {
         foreach (QLight light in world.lights)
         {
             float light_factor = GetLightFactor(light.style);
-            GameObject go = AddLight(light, light_factor);
+            Light component = AddLight(light.origin, light.light, light_factor);
             if (IsVaryingLightLevel(light.style))
             {
                 DynamicLight varying_light = new DynamicLight(light);
-                varying_light.go = go;
+                varying_light.component = component;
                 varying_light.light_factor = light_factor;
                 varying_lights.Add(varying_light);
             }
@@ -672,11 +638,11 @@ public class NetworkImporter : MonoBehaviour {
         }
 
         Quaternion objrotate = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
-        foreach (Entity entity in entities)
+        foreach (QuakeEntity entity in entities)
         {
             QModel qmodel = entity.qmodel;
-            if ((qmodel.flags & QModel.EF_ROTATE) != 0)
-                entity.go.transform.localRotation = objrotate;
+            if (qmodel != null && (qmodel.flags & QModel.EF_ROTATE) != 0)
+                entity.transform.localRotation = objrotate;
         }
 
         foreach (DynamicLight light in varying_lights)
@@ -685,8 +651,11 @@ public class NetworkImporter : MonoBehaviour {
             float factor = GetLightFactor(qlight.style);
             if (factor != light.light_factor)
             {
-                Destroy(light.go);
-                light.go = AddLight(qlight, factor);
+                /* XXX figure out why: the light levels don't change if we don't
+                   remove the old gameObject and make a new one */
+                if (light.component != null)
+                    Destroy(light.component.gameObject);
+                light.component = AddLight(qlight.origin, qlight.light, factor);
                 light.light_factor = factor;
             }
         }
@@ -696,13 +665,12 @@ public class NetworkImporter : MonoBehaviour {
 
     void DebugShowNormals()
     {
-        foreach (Entity entity in entities)
+        foreach (QuakeEntity entity in entities)
         {
-            GameObject go = entity.go;
-            Mesh mesh = go.GetComponent<MeshFilter>().mesh;
+            Mesh mesh = entity.GetComponent<MeshFilter>().mesh;
             Vector3[] v = mesh.vertices;
             Vector3[] n = mesh.normals;
-            Transform tr = go.transform;
+            Transform tr = entity.transform;
             for (int i = 0; i < v.Length; i++)
             {
                 Debug.DrawRay(tr.TransformPoint(v[i]), tr.TransformDirection(n[i] * 0.1f));
