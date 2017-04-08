@@ -463,11 +463,12 @@ public class NetworkImporter : MonoBehaviour {
         ps.Emit(emitParams, 10);
     }
 
-    public void LoadEntity(GameObject go, QModel model, int frameindex=0)
+    public bool LoadEntity(GameObject go, QModel model, int frameindex=0)
     {
         QFrame[] framegroup = model.frames[frameindex].a;
         int subindex = 0;
-        if (framegroup.Length > 1)    /* uncommon case */
+        bool is_dynamic = framegroup.Length > 1;
+        if (is_dynamic)    /* uncommon case */
         {
             float timemod = Time.time % framegroup[framegroup.Length - 1].time;
             while (subindex < framegroup.Length - 1 && framegroup[subindex].time <= timemod)
@@ -487,6 +488,7 @@ public class NetworkImporter : MonoBehaviour {
 
         go.GetComponent<MeshFilter>().sharedMesh = mesh;
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
+        return is_dynamic;
     }
 
     void LoadWeapon(string weaponmodel, int weaponframe)

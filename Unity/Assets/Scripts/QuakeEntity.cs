@@ -33,7 +33,9 @@ public class QuakeEntity : MonoBehaviour {
             gameObject.SetActive(model != null);
             if (model != null)
             {
-                qmanager.LoadEntity(gameObject, model, frameindex);
+                bool is_dynamic = qmanager.LoadEntity(gameObject, model, frameindex);
+                if (is_dynamic)
+                    qframeindex = -1;
 
                 if ((model.flags & QModel.EF_ROCKET) != 0)
                     SetDynamicLight(200);
