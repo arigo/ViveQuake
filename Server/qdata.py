@@ -449,6 +449,11 @@ class QLeafs(QData):
         ('list', FArray(QLeaf)),
         ]
 
+class QLFaces(QData):
+    FIELDS = [
+        ('list', FArrayOf(FUShort())),
+        ]
+
 class QListOfInt(QData):
     FIELDS = [
         ('list', FArrayOf(FInt())),
@@ -473,7 +478,7 @@ class QBsp(QData):
         ('lighting',  FLump(QData)),
         ('clipnodes',  FLump(QData)),
         ('leafs',  FLump(QLeafs)),
-        ('lface',   FLump(QData)),
+        ('lface',   FLump(QLFaces)),
         ('edges',   FLump(QBspEdges)),
         ('ledges',  FLump(QListOfInt)),
         ('models',  FLump(QBspModels)),
