@@ -6,16 +6,21 @@ public class QuakeEntity : MonoBehaviour {
     const int LAYER_DEFAULT = 0;
     const int LAYER_NOBLOCK = 8;
 
-    public QModel qmodel = null;
-    public int qframeindex = -1;
-    public int qsolidflags = 0;
-    public NetworkImporter qmanager;
-    Light light = null;
+    QModel qmodel = null;
+    int qframeindex = -1;
+    int qsolidflags = 0;
+    NetworkImporter qmanager;
+    Light dynamic_light;
 
     public void Setup(NetworkImporter manager)
     {
         qmanager = manager;
         gameObject.SetActive(false);
+    }
+
+    public QModel GetQModel()
+    {
+        return qmodel;
     }
 
     public void SetModel(QModel model, int frameindex=0)
@@ -73,11 +78,11 @@ public class QuakeEntity : MonoBehaviour {
 
     void SetDynamicLight(float lightlevel)
     {
-        if (light != null)
-            Destroy(light.gameObject);
-        light = null;
+        if (dynamic_light != null)
+            Destroy(dynamic_light.gameObject);
+        dynamic_light = null;
 
         if (lightlevel != 0)
-            light = qmanager.AddLight(Vector3.zero, lightlevel, 1.5f, transform);
+            dynamic_light = qmanager.AddLight(Vector3.zero, lightlevel, 1.5f, transform);
     }
 }

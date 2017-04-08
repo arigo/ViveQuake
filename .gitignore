@@ -29,6 +29,9 @@ sysinfo.txt
 *.apk
 *.unitypackage
 /Unity/Assets/Lib/
+/Unity/ViveQuake.exe
+/Unity/ViveQuake_Data/
+/Unity/player_win_development_*.pdb
 
 *.pyc
 /Server/id1

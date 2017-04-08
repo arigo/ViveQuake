@@ -640,7 +640,7 @@ public class NetworkImporter : MonoBehaviour {
         Quaternion objrotate = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
         foreach (QuakeEntity entity in entities)
         {
-            QModel qmodel = entity.qmodel;
+            QModel qmodel = entity.GetQModel();
             if (qmodel != null && (qmodel.flags & QModel.EF_ROTATE) != 0)
                 entity.transform.localRotation = objrotate;
         }
