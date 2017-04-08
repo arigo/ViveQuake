@@ -134,6 +134,8 @@ class QuakeServer(object):
                 self.spawn_client(playername=playername)
             if n == 2:
                 self.cmd("spawn")
+            if n == 3:
+                self.cmd("noclip")
             time.sleep(0.1)
             self.host_frame()
 

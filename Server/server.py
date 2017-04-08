@@ -151,7 +151,10 @@ class Client(object):
 
     def gs_cmsg_tel(self, sx, sy, sz):
         x, y, z = maploader.rev_map_vertex(float(sx), float(sy), float(sz))
+        z += 32
+        #print self.srv.client_ed.origin, '=>', (x, y, z)
         self.srv.move_client(x, y, z)
+        #print self.srv.client_ed.origin
 
 
 def main():
