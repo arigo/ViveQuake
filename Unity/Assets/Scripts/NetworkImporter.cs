@@ -476,9 +476,16 @@ public class NetworkImporter : MonoBehaviour {
 
         Mesh mesh = framegroup[subindex].m_mesh;
         MeshRenderer rend = go.GetComponent<MeshRenderer>();
-        if (rend.materials != model.m_materials)
-            rend.materials = model.m_materials;
-        go.GetComponent<MeshFilter>().mesh = mesh;
+
+        Material[] cur_mats = rend.sharedMaterials;
+        bool diff = cur_mats.Length != model.m_materials.Length;
+        if (!diff)
+            for (int i = 0; i < cur_mats.Length; i++)
+                diff = diff || (cur_mats[i] != model.m_materials[i]);
+        if (diff)
+            rend.sharedMaterials = model.m_materials;
+
+        go.GetComponent<MeshFilter>().sharedMesh = mesh;
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
@@ -667,7 +674,7 @@ public class NetworkImporter : MonoBehaviour {
     {
         foreach (QuakeEntity entity in entities)
         {
-            Mesh mesh = entity.GetComponent<MeshFilter>().mesh;
+            Mesh mesh = entity.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] v = mesh.vertices;
             Vector3[] n = mesh.normals;
             Transform tr = entity.transform;
