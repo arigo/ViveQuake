@@ -588,9 +588,12 @@ public class NetworkImporter : MonoBehaviour {
 
     void SendNetworkUpdates()
     {
-        Vector3 pos = new Vector3(headset.transform.x,
-                                  playArea.transform.y;
-                                  headset.transform.z);
+        var headset = VRTK.VRTK_SharedMethods.AddCameraFade();
+        var playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
+
+        Vector3 pos = new Vector3(headset.position.x,
+                                  playArea.position.y,
+                                  headset.position.z);
         Vector3 origin = worldObject.transform.InverseTransformPoint(pos);
         ws.Send("tel " + origin.x + " " + origin.y + " " + origin.z);
     }
