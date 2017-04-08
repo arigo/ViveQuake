@@ -463,11 +463,12 @@ public class NetworkImporter : MonoBehaviour {
         ps.Emit(emitParams, 10);
     }
 
-    public void LoadEntity(GameObject go, QModel model, int frameindex=0)
+    public bool LoadEntity(GameObject go, QModel model, int frameindex=0)
     {
         QFrame[] framegroup = model.frames[frameindex].a;
         int subindex = 0;
-        if (framegroup.Length > 1)    /* uncommon case */
+        bool is_dynamic = framegroup.Length > 1;
+        if (is_dynamic)    /* uncommon case */
         {
             float timemod = Time.time % framegroup[framegroup.Length - 1].time;
             while (subindex < framegroup.Length - 1 && framegroup[subindex].time <= timemod)
@@ -476,10 +477,18 @@ public class NetworkImporter : MonoBehaviour {
 
         Mesh mesh = framegroup[subindex].m_mesh;
         MeshRenderer rend = go.GetComponent<MeshRenderer>();
-        if (rend.materials != model.m_materials)
-            rend.materials = model.m_materials;
-        go.GetComponent<MeshFilter>().mesh = mesh;
+
+        Material[] cur_mats = rend.sharedMaterials;
+        bool diff = cur_mats.Length != model.m_materials.Length;
+        if (!diff)
+            for (int i = 0; i < cur_mats.Length; i++)
+                diff = diff || (cur_mats[i] != model.m_materials[i]);
+        if (diff)
+            rend.sharedMaterials = model.m_materials;
+
+        go.GetComponent<MeshFilter>().sharedMesh = mesh;
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
+        return is_dynamic;
     }
 
     void LoadWeapon(string weaponmodel, int weaponframe)
@@ -667,7 +676,7 @@ public class NetworkImporter : MonoBehaviour {
     {
         foreach (QuakeEntity entity in entities)
         {
-            Mesh mesh = entity.GetComponent<MeshFilter>().mesh;
+            Mesh mesh = entity.GetComponent<MeshFilter>().sharedMesh;
             Vector3[] v = mesh.vertices;
             Vector3[] n = mesh.normals;
             Transform tr = entity.transform;
