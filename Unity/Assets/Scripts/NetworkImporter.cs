@@ -66,28 +66,16 @@ public class QModel
 [Serializable]
 public class QTreeNode
 {
-    public int type = 0;
-    public byte sndwater, sndsky, sndslime, sndlava;
-
     public Vector4 plane;
-    public QTreeNode front;
-    public QTreeNode back;
+    public int front = 0;
+    public int back = 0;
+}
 
-    public QTreeNode locate_leaf(Vector3 p)
-    {
-        if (type != 0)    // leaf
-            return this;
-
-        QTreeNode sub;
-        if (p.x * plane.x + p.y * plane.y + p.z * plane.z < plane.w)
-            sub = back;
-        else
-            sub = front;
-        if (sub == null)
-            return null;
-
-        return sub.locate_leaf(p);
-    }
+[Serializable]
+public class QTreeLeaf
+{
+    public int type;
+    public byte sndwater = 0, sndsky = 0, sndslime = 0, sndlava = 0;
 }
 
 [Serializable]
@@ -97,7 +85,8 @@ public class QLevel
     public Color32[] palette;
     public QTexture[] textures;
     public QLight[] lights;
-    public QTreeNode bsptree;
+    public QTreeNode[] bspnodes;
+    public QTreeLeaf[] bspleafs;
 }
 
 [Serializable]
@@ -151,7 +140,7 @@ public class NetworkImporter : MonoBehaviour {
     public Light lightPrefab;
     public ParticleSystem[] particleSystems;
     public GameObject weaponController;
-    public GameObject[] blurEffects;
+    public MonoBehaviour[] blurEffects;
 
     QHello level_info;
     QLevel world;
@@ -740,15 +729,36 @@ public class NetworkImporter : MonoBehaviour {
         }
     }
 
+    public QTreeLeaf locate_leaf(Vector3 p)
+    {
+        int search_index = -world.bspnodes.Length;
+
+        while (search_index < 0)
+        {
+            QTreeNode node = world.bspnodes[~search_index];
+            if (p.x * node.plane.x + p.y * node.plane.y + p.z * node.plane.z < node.plane.w)
+                search_index = node.back;
+            else
+                search_index = node.front;
+        }
+        return world.bspleafs[search_index];
+    }
+
     void ShowBspTreeLeafType()
     {
         Vector3 pos = headset.transform.position;
         Vector3 origin = worldObject.transform.InverseTransformPoint(pos);
-        QTreeNode leaf = world.bsptree.locate_leaf(origin);
+        QTreeLeaf leaf = locate_leaf(origin);
 
         int type = (leaf == null) ? 0 : -leaf.type;
+        if (type >= blurEffects.Length)
+            type = blurEffects.Length - 1;
+        /* careful, blurEffects can contain duplicate entries */
+        MonoBehaviour blur = blurEffects[type];
         for (int i = 0; i < blurEffects.Length; i++)
-            if (blurEffects[i] != null)
-                blurEffects[i].SetActive(i == type);
+            if (blurEffects[i] != null && blurEffects[i] != blur)
+                blurEffects[i].enabled = false;
+        if (blur != null)
+            blur.enabled = true;
     }
 }
