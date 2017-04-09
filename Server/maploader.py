@@ -2,7 +2,7 @@ import qdata
 import array
 
 
-MAPDATA_VERSION = 15
+MAPDATA_VERSION = 16
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -50,7 +50,9 @@ def load_level(levelname):
             r_lights.append(load_light(entity))
     result['lights'] = r_lights
 
-    result['bsptree'] = load_bsp_tree(bsp, bsp.models[0].node_id0)
+    bspnodes, bspleafs = load_bsp_tree(bsp, bsp.models[0].node_id0)
+    result['bspnodes'] = bspnodes
+    result['bspleafs'] = bspleafs
 
     return result
 
@@ -194,35 +196,54 @@ def explode_into_smaller_faces(vlist, vlistlist):
 
 
 def load_bsp_tree(bsp, node_id):
-    if node_id == 0xffff:
-        return None
-    result = {}
-    if node_id & 0x8000:
-        leaf = bsp.leafs[node_id ^ 0xffff]
-        assert leaf.type < 0
-        result['type'] = leaf.type
-        for name in ('sndwater', 'sndsky', 'sndslime', 'sndlava'):
-            if getattr(leaf, name) != 0:
-                result[name] = getattr(leaf, name)
-        if result == {'type': -1}:
-            return None      # optimized away
-    else:
-        node = bsp.nodes[node_id]
-        tree_front = load_bsp_tree(bsp, node.front)
-        if tree_front is not None:
-            result['front'] = tree_front
-        #
-        tree_back = load_bsp_tree(bsp, node.back)
-        if tree_back is not None:
-            result['back'] = tree_back
-        #
-        if tree_front == tree_back:     # or both are None
-            return None      # optimized away
-        plane = bsp.planes[node.plane_id]
-        p = map_vertex(plane.normal)
-        p['w'] = plane.dist
-        result['plane'] = p
-    return result
+    result_nodes = []
+    d_leafs = {}
+
+    class frozendict(dict):
+        def __hash__(self):
+            return hash(tuple(self.items()))
+
+    d_leafs[frozendict(type=-2)] = 0
+
+    def _load_bsp_node(node_id):
+        if node_id == 0xffff:
+            return 0
+        if node_id & 0x8000:
+            leaf = bsp.leafs[node_id ^ 0xffff]
+            assert leaf.type < 0
+            result = frozendict()
+            result['type'] = leaf.type
+            for name in ('sndwater', 'sndsky', 'sndslime', 'sndlava'):
+                if getattr(leaf, name) != 0:
+                    result[name] = getattr(leaf, name)
+            return d_leafs.setdefault(result, len(d_leafs))
+        else:
+            result = {}
+            node = bsp.nodes[node_id]
+            tree_front = _load_bsp_node(node.front)
+            if tree_front != 0:
+                result['front'] = tree_front
+            #
+            tree_back = _load_bsp_node(node.back)
+            if tree_back != 0:
+                result['back'] = tree_back
+            #
+            if tree_front == tree_back:     # equal (possibly both are 0)
+                return tree_front      # optimized away
+            plane = bsp.planes[node.plane_id]
+            p = map_vertex(plane.normal)
+            p['w'] = plane.dist
+            result['plane'] = p
+            index = len(result_nodes)
+            result_nodes.append(result)
+            return ~index
+
+    _load_bsp_node(node_id)
+    result_leafs = [None] * len(d_leafs)
+    for key, value in d_leafs.iteritems():
+        assert value >= 0
+        result_leafs[value] = key
+    return result_nodes, result_leafs
 
 
 def load_texture(mipmap):
@@ -303,7 +324,7 @@ if __name__ == '__main__':
     import pprint
     #m1 = load_model('progs/flame.mdl')
     #m1 = load_model('maps/b_nail1.bsp')
-    m1 = load_level('start')
+    m1 = load_level('e1m1')
     #pprint.pprint(m1['lights'])
     #pprint.pprint(load_texture(m1['texturenames'][0]))
     #pprint.pprint(load_model('dog'))
