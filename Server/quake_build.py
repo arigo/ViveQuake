@@ -94,7 +94,8 @@ ffibuilder.cdef("""
     server_static_t	svs;
 
     void SV_ConnectClient(int clientnum);
-    void PQuake_setorigin(int eindex, float x, float y, float z);
+    void PQuake_setorigin(int eindex, float x, float y, float z,
+                          qboolean trigger);
 """)
 
 ffibuilder.set_source("_quake", r"""
@@ -341,13 +342,14 @@ ffibuilder.set_source("_quake", r"""
 
     extern void SV_ConnectClient (int clientnum);  /* sv_main.c */
 
-    void PQuake_setorigin(int eindex, float x, float y, float z)
+    void PQuake_setorigin(int eindex, float x, float y, float z,
+                          qboolean triggers)
     {
         edict_t *e = EDICT_NUM(eindex);
         e->v.origin[0] = x;
         e->v.origin[1] = y;
         e->v.origin[2] = z;
-        SV_LinkEdict (e, false);
+        SV_LinkEdict (e, triggers);
     }
 """,
     sources='''

@@ -64,12 +64,40 @@ public class QModel
 }
 
 [Serializable]
+public class QTreeNode
+{
+    public int type = 0;
+    public byte sndwater, sndsky, sndslime, sndlava;
+
+    public Vector4 plane;
+    public QTreeNode front;
+    public QTreeNode back;
+
+    public QTreeNode locate_leaf(Vector3 p)
+    {
+        if (type != 0)    // leaf
+            return this;
+
+        QTreeNode sub;
+        if (p.x * plane.x + p.y * plane.y + p.z * plane.z < plane.w)
+            sub = back;
+        else
+            sub = front;
+        if (sub == null)
+            return null;
+
+        return sub.locate_leaf(p);
+    }
+}
+
+[Serializable]
 public class QLevel
 {
     public QModel[] models;
     public Color32[] palette;
     public QTexture[] textures;
     public QLight[] lights;
+    public QTreeNode bsptree;
 }
 
 [Serializable]
@@ -123,9 +151,11 @@ public class NetworkImporter : MonoBehaviour {
     public Light lightPrefab;
     public ParticleSystem[] particleSystems;
     public GameObject weaponController;
+    public GameObject[] blurEffects;
 
     QHello level_info;
     QLevel world;
+    bool worldReady;
     Dictionary<string, QModel> models;
     WebSocket ws;
     volatile SnapEntry[] currentUpdateMessage;
@@ -135,6 +165,8 @@ public class NetworkImporter : MonoBehaviour {
     string current_weapon_model = "";
     QuakeEntity[] entities;
     QuakeEntity weapon_entity;
+    Transform headset, playArea;
+
 
     private void Start()
     {
@@ -241,7 +273,8 @@ public class NetworkImporter : MonoBehaviour {
         /* disable all my children when the level is ready */
         for (int i = 0; i < transform.childCount; i++)
             transform.GetChild(i).gameObject.SetActive(false);
-        Transform playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
+        headset = VRTK.VRTK_SharedMethods.AddCameraFade();
+        playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
         playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
     }
 
@@ -584,13 +617,11 @@ public class NetworkImporter : MonoBehaviour {
                     LoadRocketTrail(entity.transform, 0);
             }
         }
+        worldReady = true;
     }
 
     void SendNetworkUpdates()
     {
-        var headset = VRTK.VRTK_SharedMethods.AddCameraFade();
-        var playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
-
         Vector3 pos = new Vector3(headset.position.x,
                                   playArea.position.y,
                                   headset.position.z);
@@ -663,6 +694,8 @@ public class NetworkImporter : MonoBehaviour {
             SnapEntry[] msg = Interlocked.Exchange<SnapEntry[]>(ref currentUpdateMessage, null);
             NetworkUpdateData(msg);
         }
+        if (!worldReady)
+            return;
 
         Quaternion objrotate = AnglesToQuaternion(new Vector3(0, 100 * Time.time, 0));
         foreach (QuakeEntity entity in entities)
@@ -688,6 +721,8 @@ public class NetworkImporter : MonoBehaviour {
         }
 
         //DebugShowNormals();
+
+        ShowBspTreeLeafType();
     }
 
     void DebugShowNormals()
@@ -705,4 +740,15 @@ public class NetworkImporter : MonoBehaviour {
         }
     }
 
+    void ShowBspTreeLeafType()
+    {
+        Vector3 pos = headset.transform.position;
+        Vector3 origin = worldObject.transform.InverseTransformPoint(pos);
+        QTreeNode leaf = world.bsptree.locate_leaf(origin);
+
+        int type = (leaf == null) ? 0 : -leaf.type;
+        for (int i = 0; i < blurEffects.Length; i++)
+            if (blurEffects[i] != null)
+                blurEffects[i].SetActive(i == type);
+    }
 }

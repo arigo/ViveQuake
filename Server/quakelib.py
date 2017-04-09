@@ -129,15 +129,17 @@ class QuakeServer(object):
         self.client_ed = None
 
     def setup(self, playername="quake_player"):
-        for n in range(4):
-            if n == 1:
-                self.spawn_client(playername=playername)
-            if n == 2:
-                self.cmd("spawn")
-            if n == 3:
-                self.cmd("noclip")
+        def next():
             time.sleep(0.1)
             self.host_frame()
+        next()
+        self.spawn_client(playername=playername)
+        next()
+        self.cmd("spawn")
+        next()
+        self.cmd("god")
+        next()
+        self.cmd("noclip")
 
     def spawn_client(self, clientnum=0, playername=None):
         assert 0 <= clientnum < lib.svs.maxclients
@@ -158,7 +160,7 @@ class QuakeServer(object):
 
     def move_client(self, x, y, z):
         if self.client_ed is not None:
-            lib.PQuake_setorigin(self.client_ed._index, x, y, z)
+            lib.PQuake_setorigin(self.client_ed._index, x, y, z, True)
 
     def host_frame(self, forced_delay=None):
         next_time = time.time()

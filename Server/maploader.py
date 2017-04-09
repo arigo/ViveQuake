@@ -2,7 +2,7 @@ import qdata
 import array
 
 
-MAPDATA_VERSION = 14
+MAPDATA_VERSION = 15
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -49,6 +49,8 @@ def load_level(levelname):
         if entity.get('classname', '').startswith('light'):
             r_lights.append(load_light(entity))
     result['lights'] = r_lights
+
+    result['bsptree'] = load_bsp_tree(bsp, bsp.models[0].node_id0)
 
     return result
 
@@ -191,6 +193,38 @@ def explode_into_smaller_faces(vlist, vlistlist):
         vlistlist.append(vlist)
 
 
+def load_bsp_tree(bsp, node_id):
+    if node_id == 0xffff:
+        return None
+    result = {}
+    if node_id & 0x8000:
+        leaf = bsp.leafs[node_id ^ 0xffff]
+        assert leaf.type < 0
+        result['type'] = leaf.type
+        for name in ('sndwater', 'sndsky', 'sndslime', 'sndlava'):
+            if getattr(leaf, name) != 0:
+                result[name] = getattr(leaf, name)
+        if result == {'type': -1}:
+            return None      # optimized away
+    else:
+        node = bsp.nodes[node_id]
+        tree_front = load_bsp_tree(bsp, node.front)
+        if tree_front is not None:
+            result['front'] = tree_front
+        #
+        tree_back = load_bsp_tree(bsp, node.back)
+        if tree_back is not None:
+            result['back'] = tree_back
+        #
+        if tree_front == tree_back:     # or both are None
+            return None      # optimized away
+        plane = bsp.planes[node.plane_id]
+        p = map_vertex(plane.normal)
+        p['w'] = plane.dist
+        result['plane'] = p
+    return result
+
+
 def load_texture(mipmap):
     r_data = mipmap.data.encode('base64')
     return {'width': mipmap.w, 'height': mipmap.h, 'data': r_data}
@@ -268,8 +302,8 @@ def load_model(modelname):
 if __name__ == '__main__':
     import pprint
     #m1 = load_model('progs/flame.mdl')
-    m1 = load_model('maps/b_nail1.bsp')
-    #m1 = load_level('start')
+    #m1 = load_model('maps/b_nail1.bsp')
+    m1 = load_level('start')
     #pprint.pprint(m1['lights'])
     #pprint.pprint(load_texture(m1['texturenames'][0]))
     #pprint.pprint(load_model('dog'))
