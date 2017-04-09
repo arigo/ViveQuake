@@ -82,7 +82,7 @@ public class QTreeLeaf
 public class QLevel
 {
     public QModel[] models;
-    int liquid_model;
+    public int liquid_model;
     public Color32[] palette;
     public QTexture[] textures;
     public QLight[] lights;
