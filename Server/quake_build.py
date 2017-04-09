@@ -95,7 +95,7 @@ ffibuilder.cdef("""
 
     void SV_ConnectClient(int clientnum);
     void PQuake_setorigin(int eindex, float x, float y, float z,
-                          qboolean trigger);
+                          qboolean triggers);
 """)
 
 ffibuilder.set_source("_quake", r"""

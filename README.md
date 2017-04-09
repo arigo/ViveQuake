@@ -20,3 +20,12 @@ Finally, the address that the Unity client connects to is hard-wired for now ins
 script (it is not 127.0.0.1 because I run the server on another Linux machine):
 
     Asserts\Scripts\NetworkImporter.cs
+
+
+License
+-------
+
+Files in Server/ contain a bit of code directly copied from the Quake source
+code, which is available as GPL.  So all the code in Server/ is also covered
+by the GPL license.  Files in Unity/ should be free of such code and is thus
+covered by the more permissive MIT license.
