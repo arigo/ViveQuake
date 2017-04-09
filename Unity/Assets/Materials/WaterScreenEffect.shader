@@ -19,6 +19,7 @@
 
 	sampler2D _MainTex;
 	float _Delta_x, _Delta_y;
+	fixed4 _FogColor;
 
 	float2 shift(float2 p)
 	{
@@ -31,7 +32,7 @@
 
 	fixed4 frag(v2f i) : SV_Target
 	{
-		const float amplitude = 0.04;
+		const float amplitude = 0.0333;
 		const float resolution = 0.7;
 
 		float2 delta;
@@ -41,7 +42,10 @@
 		float2 p = shift(r);
 		float2 q = shift(r + 1);
 		float2 s = r + amplitude * (p - q);
-		return tex2D(_MainTex, s / resolution - delta);
+		fixed4 pixel = tex2D(_MainTex, s / resolution - delta);
+		fixed4 result = lerp(pixel, _FogColor, _FogColor.w);
+		result.w = 1;
+		return result;
 	}
 
 	ENDCG

@@ -140,7 +140,9 @@ public class NetworkImporter : MonoBehaviour {
     public Light lightPrefab;
     public ParticleSystem[] particleSystems;
     public GameObject weaponController;
-    public MonoBehaviour[] blurEffects;
+    public WaterScreenScript[] blurEffects;
+    public Color[] blurColor;
+    public Material uniformScreenTint;
 
     QHello level_info;
     QLevel world;
@@ -754,11 +756,13 @@ public class NetworkImporter : MonoBehaviour {
         if (type >= blurEffects.Length)
             type = blurEffects.Length - 1;
         /* careful, blurEffects can contain duplicate entries */
-        MonoBehaviour blur = blurEffects[type];
+        var blur = blurEffects[type];
         for (int i = 0; i < blurEffects.Length; i++)
             if (blurEffects[i] != null && blurEffects[i] != blur)
                 blurEffects[i].enabled = false;
         if (blur != null)
             blur.enabled = true;
+
+        uniformScreenTint.color = blurColor[type];
     }
 }

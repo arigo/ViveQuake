@@ -5,6 +5,7 @@ using UnityEngine;
 public class WaterScreenScript : MonoBehaviour {
 
     public Material material;
+    public Color fogColor;
 
     Camera _camera;
 
@@ -53,6 +54,7 @@ public class WaterScreenScript : MonoBehaviour {
     {
         material.SetFloat("_Delta_x", p_delta.x);
         material.SetFloat("_Delta_y", p_delta.y);
+        material.SetColor("_FogColor", fogColor);
         Graphics.Blit(source, dest, material, /*pass=*/0);
     }
 
