@@ -82,6 +82,7 @@ public class QTreeLeaf
 public class QLevel
 {
     public QModel[] models;
+    int liquid_model;
     public Color32[] palette;
     public QTexture[] textures;
     public QLight[] lights;
@@ -132,7 +133,7 @@ public class NetworkImporter : MonoBehaviour {
     public string baseUrl = "192.168.0.10:8000";
     const int WEBSOCK_VERSION = 4;
 
-    public GameObject worldObject;
+    public GameObject worldObject, liquidObject;
     public Material worldMaterial;
     public Material skyMaterial;
     public Material waterMaterial;
@@ -254,6 +255,8 @@ public class NetworkImporter : MonoBehaviour {
 
         LoadLights();
         LoadEntity(worldObject, world.models[0]);
+        if (world.liquid_model != 0)
+            LoadEntity(liquidObject, world.models[world.liquid_model]);
 
         workUpdateMessage = new SnapEntry[0];
         ws = new WebSocket("ws://" + baseUrl + "/websock/" + WEBSOCK_VERSION);

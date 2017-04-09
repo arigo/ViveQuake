@@ -2,7 +2,7 @@ import qdata
 import array
 
 
-MAPDATA_VERSION = 16
+MAPDATA_VERSION = 17
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -38,11 +38,26 @@ def load_level(levelname):
     bsp = PAK0.content['maps/%s.bsp' % (levelname,)]
     result = {}
 
-    result['models'] = [load_bsp_model(bsp, model) for model in bsp.models]
+    r_textures = load_bsp_textures(bsp)
+    r_models = []
+
+    r_models.append(load_bsp_model(bsp, bsp.models[0],
+                                   liquid_check=(r_textures, False)))
+
+    for i in range(1, len(bsp.models)):
+        r_models.append(load_bsp_model(bsp, bsp.models[i]))
+
+    liquid_model = load_bsp_model(bsp, bsp.models[0],
+                                  liquid_check=(r_textures, True))
+    if liquid_model['faces']:
+        result['liquid_model'] = len(r_models)
+        r_models.append(liquid_model)
+
+    result['models'] = r_models
 
     result['palette'] = load_palette()
 
-    result['textures'] = load_bsp_textures(bsp)
+    result['textures'] = r_textures
 
     r_lights = []
     for entity in qdata.parse_entities(bsp.entities.rawdata):
@@ -85,7 +100,7 @@ def load_light(entity):
     return result
 
 
-def load_bsp_model(bsp, model):
+def load_bsp_model(bsp, model, liquid_check=None):
     r_vertices = []
     r_uvs = []
     r_normals = []
@@ -109,6 +124,14 @@ def load_bsp_model(bsp, model):
 
     r_faces = []
     for face in bsp.faces.list[model.face_id : model.face_id + model.face_num]:
+        texinfo = bsp.texinfo[face.texinfo_id]
+        texid = texinfo.miptex
+
+        if liquid_check:
+            is_water = liquid_check[0][texid].get('effect') == 'water'
+            if is_water != liquid_check[1]:
+                continue
+
         vnum = face.ledge_num
         vlist0 = []
         vlist1 = []
@@ -122,10 +145,8 @@ def load_bsp_model(bsp, model):
             vlist1.append(v1)
         assert vlist0[1:] + vlist0[:1] == vlist1
 
-        texinfo = bsp.texinfo[face.texinfo_id]
         s4 = texinfo.s
         t4 = texinfo.t
-        texid = texinfo.miptex
         tex = bsp.textures[texid]
 
         vlist0 = [vertexes[vindex] for vindex in vlist0]
