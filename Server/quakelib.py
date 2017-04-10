@@ -125,6 +125,8 @@ class QuakeServer(object):
         lib.PQuake_Ready(len(self.argv), self.argv_list)
         self.prev_time = time.time()
         self.initialized = False
+        self.client = None
+        self.client_ed = None
         for i in range(30):
             self.host_frame(0.1)
             if lib.progs != ffi.NULL:
@@ -134,8 +136,6 @@ class QuakeServer(object):
                                (args[1:],))
         initialize()
         self.model_by_index = {}
-        self.client = None
-        self.client_ed = None
 
     def setup(self, playername="quake_player"):
         def next():
@@ -167,9 +167,12 @@ class QuakeServer(object):
         lib.host_client = self.client
         lib.Cmd_ExecuteString(string, lib.src_client)
 
-    def move_client(self, x, y, z):
+    def move_client(self, x, y, z, ax, ay, fire=False):
         if self.client_ed is not None:
             lib.PQuake_setorigin(self.client_ed._index, x, y, z, True)
+            self.client_ed.angles = (ax, ay, 0)
+            self.client_ed.v_angle = (ax, ay, 0)
+            self.client_ed.button0 = int(fire)
 
     def host_frame(self, forced_delay=None):
         next_time = time.time()

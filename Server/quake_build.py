@@ -202,6 +202,7 @@ ffibuilder.set_source("_quake", r"""
     void Chase_Init(void) { }
     void Con_Init(void) { }
 
+    cvar_t	sv_aim;
     cvar_t	cl_name = {"_cl_name", "player", true};
     cvar_t	cl_color = {"_cl_color", "0", true};
     client_static_t	cls;
@@ -237,6 +238,8 @@ ffibuilder.set_source("_quake", r"""
 
         printf ("Host_Init\n");
         Host_Init (&parms);
+
+        sv_aim.value = 9999;   /* turn off automatic aim correction */
     }
 
     static long host_frame_time = 0;    /* a random, strictly increasing num */

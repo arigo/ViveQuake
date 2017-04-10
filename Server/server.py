@@ -149,12 +149,14 @@ class Client(object):
     def close(self):
         pass
 
-    def gs_cmsg_tel(self, sx, sy, sz):
+    def gs_cmsg_tel(self, sx, sy, sz, ax, ay, fire=False):
         x, y, z = maploader.rev_map_vertex(float(sx), float(sy), float(sz))
-        z += 32
-        #print self.srv.client_ed.origin, '=>', (x, y, z)
-        self.srv.move_client(x, y, z)
-        #print self.srv.client_ed.origin
+        # 'ay' is 'yaw' i.e. regular direction on a map
+        # 'ax' is 'pitch', i.e. how much up (-) or down (+)
+        ax = float(ax)
+        ay = 90.0 - float(ay)
+        #print (x, y, z, ax, ay, fire)
+        self.srv.move_client(x, y, z, ax, ay, fire=fire)
 
 
 def main():
