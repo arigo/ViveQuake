@@ -777,16 +777,16 @@ public class NetworkImporter : MonoBehaviour {
 
     void BonusFlash()
     {
-        uniformFadingColor.r += 215. / 256;
-        uniformFadingColor.g += 186. / 256;
-        uniformFadingColor.b += 69.  / 256;
-        uniformFadingColor.a =  50.  / 256;
+        uniformFadingColor.r += 215 / 256f;
+        uniformFadingColor.g += 186 / 256f;
+        uniformFadingColor.b += 69  / 256f;
+        uniformFadingColor.a =  50  / 256f;
     }
 
     void UpdateUniformFadingColor()
     {
         uniformScreenTint.color = uniformFadingColor;
-        uniformFadingColor.a = Max(uniformFadingColor.a - Time.deltaTime, 0);
+        uniformFadingColor.a = Mathf.Max(uniformFadingColor.a - Time.deltaTime, 0);
     }
 
     void AddUniformScreenTint(Color c2)
