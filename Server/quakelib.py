@@ -228,7 +228,11 @@ class QuakeServer(object):
             if ed == self.client_ed:
                 continue
             index = int(ed.modelindex)
-            if index <= 0 or ed.free:    # removed or invisible edict
+            # ignore entities without a model.  In the same way as
+            # Quake, this means ignoring entities that have *either* no
+            # ed.modelindex *or* no ed.model.  In other words you need
+            # both set to be visible.
+            if index == 0 or not ed.model:
                 model = ""
             else:
                 try:
