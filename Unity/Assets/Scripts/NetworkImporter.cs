@@ -159,6 +159,7 @@ public class NetworkImporter : MonoBehaviour {
     QuakeEntity weapon_entity;
     Transform headset, playArea;
     Color uniformFadingColor;
+    bool shooting;
 
 
     private void Start()
@@ -568,7 +569,7 @@ public class NetworkImporter : MonoBehaviour {
         int msgIndex = 1 + num_lightstyles;
 
         LoadWeapon(msg[msgIndex].s,
-                   msg[msgIndex].i);
+                   msg[msgIndex+1].i);
         msgIndex += 2;
 
         int screen_flash = msg[msgIndex++].i;
@@ -617,15 +618,32 @@ public class NetworkImporter : MonoBehaviour {
             }
         }
         worldReady = true;
+        shooting = false;
     }
 
     void SendNetworkUpdates()
     {
-        Vector3 pos = new Vector3(headset.position.x,
-                                  playArea.position.y,
-                                  headset.position.z);
-        Vector3 origin = worldObject.transform.InverseTransformPoint(pos);
-        ws.Send("tel " + origin.x + " " + origin.y + " " + origin.z);
+        Vector3 pos, origin, angles;
+        string final;
+        if (shooting)
+        {
+            shooting = false;
+            pos = weaponController.transform.position;
+            origin = worldObject.transform.InverseTransformPoint(pos);
+            angles = weaponController.transform.rotation.eulerAngles;
+            final = " 1";
+        }
+        else
+        {
+            pos = new Vector3(headset.position.x,
+                              playArea.position.y,
+                              headset.position.z);
+            origin = worldObject.transform.InverseTransformPoint(pos);
+            origin.y += 32;
+            angles = headset.rotation.eulerAngles;
+            final = "";
+        }
+        ws.Send("tel " + origin.x + " " + origin.y + " " + origin.z + " " + angles.x + " " + angles.y + final);
     }
 
     public Light AddLight(Vector3 origin, float light, float light_factor, Transform parent=null)
@@ -686,6 +704,9 @@ public class NetworkImporter : MonoBehaviour {
 
     private void Update()
     {
+        if (weaponController.GetComponentInChildren<VRTK.VRTK_ControllerEvents>().triggerClicked)
+            shooting = true;
+
         if (currentUpdateMessage != null)
         {
             SendNetworkUpdates();
@@ -777,10 +798,10 @@ public class NetworkImporter : MonoBehaviour {
 
     void BonusFlash()
     {
-        uniformFadingColor.r += 215 / 256f;
-        uniformFadingColor.g += 186 / 256f;
-        uniformFadingColor.b += 69  / 256f;
-        uniformFadingColor.a =  50  / 256f;
+        uniformFadingColor.r = 215 / 256f;
+        uniformFadingColor.g = 186 / 256f;
+        uniformFadingColor.b = 69  / 256f;
+        uniformFadingColor.a = 50  / 256f;
     }
 
     void UpdateUniformFadingColor()
@@ -805,7 +826,7 @@ public class NetworkImporter : MonoBehaviour {
                 A_combined = 1 - (1-A1)*(1-A2)
                 R_combined = (R1*(A1*(1-A2)) + R2*A2) / A_combined
         */
-        if (c2.a < 0.001)
+        if (c2.a == 0)
             return;    /* avoids the division by zero */
 
         Color c1 = uniformScreenTint.color;
