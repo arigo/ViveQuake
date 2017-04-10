@@ -378,7 +378,7 @@ ffibuilder.set_source("_quake", r"""
         src/crc.c
         src/wad.c
     '''.split(),
-    extra_compile_args=['-g'])
+    extra_compile_args=['-g', '-Og'])
 
 if len(sys.argv) > 1:
     os.system("grep -w %s %s" % (sys.argv[1], ' '.join(ffibuilder._assigned_source[3]['sources']))); sys.exit(0)

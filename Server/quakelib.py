@@ -219,17 +219,17 @@ class QuakeServer(object):
             if ed == self.client_ed:
                 continue
             index = int(ed.modelindex)
-            try:
-                if index <= 0:    # removed or invisible edict
-                    model = ""
-                else:
+            if index <= 0 or ed.free:    # removed or invisible edict
+                model = ""
+            else:
+                try:
                     model = self.model_by_index[index]
-            except KeyError:
-                if ed.model == self.get_full_level_path():
-                    model = '*0'
-                else:
-                    model = ed.model
-                self.model_by_index[index] = model
+                except KeyError:
+                    if ed.model == self.get_full_level_path():
+                        model = '*0'
+                    else:
+                        model = ed.model
+                    self.model_by_index[index] = model
 
             if model:
                 frame = ed.frame
@@ -271,7 +271,9 @@ if __name__ == "__main__":
     srv = QuakeServer(sys.argv[1:])
     srv.setup()
     n = 0
+    print "ping!"; time.sleep(1.5)
     while True:
+        srv.move_client(538.3253, 733.311, 112.0) # XXX
         time.sleep(0.1)
         srv.host_frame()
         n += 1
