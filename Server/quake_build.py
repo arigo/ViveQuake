@@ -14,6 +14,7 @@ ffibuilder.cdef("""
     typedef float vec_t;
     typedef vec_t vec3_t[3];
     typedef enum {false, true} qboolean;
+    typedef unsigned char byte;
 
     #define DEF_SAVEGLOBAL ...
     enum {ev_void, ev_string, ev_float, ev_vector, ev_entity, ev_field,
@@ -96,6 +97,10 @@ ffibuilder.cdef("""
     void SV_ConnectClient(int clientnum);
     void PQuake_setorigin(int eindex, float x, float y, float z,
                           qboolean triggers);
+
+    extern "Python" {
+        void PQuake_StuffCmd(char *);
+    }
 """)
 
 ffibuilder.set_source("_quake", r"""
@@ -213,13 +218,13 @@ ffibuilder.set_source("_quake", r"""
         return (eval_t *)((int *)&ed->v + fieldindex);
     }
 
-    static void hack_makestatic(void);
+    static void hack_pr_cmds(void);
 
     void PQuake_Ready(int argc, char **argv)
     {
         static quakeparms_t    parms;
 
-        hack_makestatic();
+        hack_pr_cmds();
 
         parms.memsize = 8*1024*1024;
         parms.membase = malloc (parms.memsize);
@@ -246,6 +251,7 @@ ffibuilder.set_source("_quake", r"""
     extern	builtin_t *pr_builtins;
     extern int pr_numbuiltins;
     extern void PF_makestatic(void);
+    extern void PF_stuffcmd(void);
 
     struct pquake_staticentity_s {
         char *model;
@@ -300,13 +306,31 @@ ffibuilder.set_source("_quake", r"""
         PF_makestatic();
     }
 
-    static void hack_makestatic(void)
+    static void PQuake_StuffCmd(char *);   /* extern "Python" */
+
+    static void PQuake_PF_stuffcmd (void)
+    {
+        int		entnum;
+        char	*str;
+        client_t	*old;
+
+        entnum = G_EDICTNUM(OFS_PARM0);
+        if (entnum < 1 || entnum > svs.maxclients)
+            PR_RunError ("Parm 0 not a client");
+        str = G_STRING(OFS_PARM1);
+
+        PQuake_StuffCmd(str);
+    }
+
+    static void hack_pr_cmds(void)
     {
         int i;
         for (i = 0; i < pr_numbuiltins; i++)
         {
             if (pr_builtins[i] == &PF_makestatic)
                 pr_builtins[i] = &PQuake_PF_makestatic;
+            if (pr_builtins[i] == &PF_stuffcmd)
+                pr_builtins[i] = &PQuake_PF_stuffcmd;
         }
     }
 
@@ -320,23 +344,26 @@ ffibuilder.set_source("_quake", r"""
     static void net_dummy7(qsocket_t *sock) { }
     static void net_dummy8(void) { }
 
+    /*forward*/
+    //static int PQuake_SendMessage(qsocket_t *sock, sizebuf_t *data);
+
     int net_numdrivers = 1;
     net_driver_t net_drivers[MAX_NET_DRIVERS] = {
         {
-        "Unused",
+        "PQuake",
         false,
-        net_dummy0,
-        net_dummy1,
-        net_dummy1,
-        net_dummy2,
-        net_dummy3,
-        net_dummy4,
-        net_dummy5,
-        net_dummy5,
-        net_dummy6,
-        net_dummy6,
-        net_dummy7,
-        net_dummy8
+        net_dummy0,  // Init
+        net_dummy1,  // Listen
+        net_dummy1,  // SearchForHost
+        net_dummy2,  // Connect
+        net_dummy3,  // CheckNewConnections
+        net_dummy4,  // QGetMessage
+        net_dummy5,  // QSendMessage
+        net_dummy5,  // SendUnreliableMessage
+        net_dummy6,  // CanSendMessge
+        net_dummy6,  // CanSendUnreliableMessage
+        net_dummy7,  // Close
+        net_dummy8   // Shutdown
         }
     };
 

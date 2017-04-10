@@ -158,6 +158,7 @@ public class NetworkImporter : MonoBehaviour {
     QuakeEntity[] entities;
     QuakeEntity weapon_entity;
     Transform headset, playArea;
+    Color uniformFadingColor;
 
 
     private void Start()
@@ -570,6 +571,10 @@ public class NetworkImporter : MonoBehaviour {
                    msg[msgIndex].i);
         msgIndex += 2;
 
+        int screen_flash = msg[msgIndex++].i;
+        if (screen_flash != 0)
+            BonusFlash();
+
         int num_entities = (msg.Length - msgIndex) / 9;
         if (entities.Length < num_entities)
         {
@@ -688,6 +693,7 @@ public class NetworkImporter : MonoBehaviour {
             SnapEntry[] msg = Interlocked.Exchange<SnapEntry[]>(ref currentUpdateMessage, null);
             NetworkUpdateData(msg);
         }
+        UpdateUniformFadingColor();
         if (!worldReady)
             return;
 
@@ -766,6 +772,50 @@ public class NetworkImporter : MonoBehaviour {
         if (blur != null)
             blur.enabled = true;
 
-        uniformScreenTint.color = blurColor[type];
+        AddUniformScreenTint(blurColor[type]);
+    }
+
+    void BonusFlash()
+    {
+        uniformFadingColor.r += 215. / 256;
+        uniformFadingColor.g += 186. / 256;
+        uniformFadingColor.b += 69.  / 256;
+        uniformFadingColor.a =  50.  / 256;
+    }
+
+    void UpdateUniformFadingColor()
+    {
+        uniformScreenTint.color = uniformFadingColor;
+        uniformFadingColor.a = Max(uniformFadingColor.a - Time.deltaTime, 0);
+    }
+
+    void AddUniformScreenTint(Color c2)
+    {
+        /* if the base screen color is (R,G,B), then:
+
+           - after applying the first screen tint (R1,G1,B1,A1), it is:
+                R*(1-A1) + R1*A1, ...
+
+           - after applying the second screen tint on top, it is:
+                (R*(1-A1) + R1*A1) * (1-A2) + R2*A2, ...
+              = R*((1-A1)*(1-A2)) + R1*(A1*(1-A2)) + R2*A2, ...
+
+           so it is equal to a single screen tinting with
+
+                A_combined = 1 - (1-A1)*(1-A2)
+                R_combined = (R1*(A1*(1-A2)) + R2*A2) / A_combined
+        */
+        if (c2.a < 0.001)
+            return;    /* avoids the division by zero */
+
+        Color c1 = uniformScreenTint.color;
+        float A_combined = 1 - (1-c1.a)*(1-c2.a);
+        float f1 = c1.a * (1 - c2.a) / A_combined;
+        float f2 = c2.a / A_combined;
+        uniformScreenTint.color = new Color(
+            c1.r * f1 + c2.r * f2,
+            c1.g * f1 + c2.g * f2,
+            c1.b * f1 + c2.b * f2,
+            A_combined);
     }
 }

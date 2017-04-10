@@ -104,6 +104,15 @@ class StaticEntity(object):
         self.angles = tuple(se.angles)
 
 
+@ffi.def_extern()
+def PQuake_StuffCmd(s):
+    s = ffi.string(s)
+    print 'stuffcmd:', repr(s)
+    if s == "bf\n":
+        global screen_flash
+        screen_flash = 1
+screen_flash = 0
+
 # ------------------------------------------------------------
 
 
@@ -262,6 +271,10 @@ class QuakeServer(object):
         snapshot.append(self.client_ed.weaponmodel or "")
         snapshot.append(self.client_ed.weaponframe)
 
+        global screen_flash
+        snapshot.append(screen_flash)
+        screen_flash = 0
+
         for entry in self.enum_snapshot_models():
             snapshot += entry
         return snapshot
@@ -273,8 +286,8 @@ if __name__ == "__main__":
     n = 0
     print "ping!"; time.sleep(1.5)
     while True:
-        srv.move_client(538.3253, 733.311, 112.0) # XXX
         time.sleep(0.1)
+        srv.move_client(538.3253, 733.311, 112.0) # XXX
         srv.host_frame()
         n += 1
         #if n == 5:
