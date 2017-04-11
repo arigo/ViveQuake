@@ -2,7 +2,7 @@ import qdata
 import array
 
 
-MAPDATA_VERSION = 17
+MAPDATA_VERSION = 19
 
 PAK0 = qdata.load('id1/pak0.pak')
 
@@ -41,14 +41,14 @@ def load_level(levelname):
     r_textures = load_bsp_textures(bsp)
     r_models = []
 
-    r_models.append(load_bsp_model(bsp, bsp.models[0],
-                                   liquid_check=(r_textures, False)))
+    r_models.append(load_bsp_model(bsp, bsp.models[0], r_textures,
+                                   liquid_check=False))
 
     for i in range(1, len(bsp.models)):
-        r_models.append(load_bsp_model(bsp, bsp.models[i]))
+        r_models.append(load_bsp_model(bsp, bsp.models[i], r_textures))
 
-    liquid_model = load_bsp_model(bsp, bsp.models[0],
-                                  liquid_check=(r_textures, True))
+    liquid_model = load_bsp_model(bsp, bsp.models[0], r_textures,
+                                  liquid_check=True)
     if liquid_model['faces']:
         result['liquid_model'] = len(r_models)
         r_models.append(liquid_model)
@@ -73,9 +73,12 @@ def load_level(levelname):
 
 
 def load_bsp_textures(bsp):
+    names2texid = {}
+    for texid, tex in enumerate(bsp.textures):
+        names2texid[tex.name] = texid
+
     r_textures = []
-    for texid, texnum in enumerate(bsp.textures):
-        tex = bsp.textures[texid]
+    for texid, tex in enumerate(bsp.textures):
         assert tex.width == tex.mipmaps[0].w
         assert tex.height == tex.mipmaps[0].h
         r_texture = load_texture(tex.mipmaps[0])
@@ -83,9 +86,27 @@ def load_bsp_textures(bsp):
             r_texture['effect'] = 'sky'
         elif tex.name.startswith('*'):
             r_texture['effect'] = 'water'
-        else:   # XXX if tex.name.startswith('+')... animated textures
-            pass
+        elif tex.name.startswith('+'):    # animated textures
+            char = tex.name[1]
+            char = chr(ord(char) + 1)
+            nextname = '+' + char + tex.name[2:]
+            if nextname not in names2texid:
+                char = ('0' if '0' <= char <= '9' else
+                        'a' if 'a' <= char <= 'z' else
+                        'A' if 'A' <= char <= 'Z' else
+                        char)
+                nextname = '+' + char + tex.name[2:]
+            r_texture['anim_next'] = names2texid[nextname]
+            #
+            nextname = '+' + ('a' if '0' <= char <= '9' else '0') + tex.name[2:]
+            if nextname not in names2texid:
+                nextname = ('+' + ('A' if '0' <= char <= '9' else '0')
+                                + tex.name[2:])
+            if nextname in names2texid:
+                r_texture['anim_alt'] = names2texid[nextname]
+            #
         r_textures.append(r_texture)
+
     return r_textures
 
 
@@ -100,7 +121,7 @@ def load_light(entity):
     return result
 
 
-def load_bsp_model(bsp, model, liquid_check=None):
+def load_bsp_model(bsp, model, r_textures=None, liquid_check=None):
     r_vertices = []
     r_uvs = []
     r_normals = []
@@ -127,9 +148,9 @@ def load_bsp_model(bsp, model, liquid_check=None):
         texinfo = bsp.texinfo[face.texinfo_id]
         texid = texinfo.miptex
 
-        if liquid_check:
-            is_water = liquid_check[0][texid].get('effect') == 'water'
-            if is_water != liquid_check[1]:
+        if liquid_check is not None:
+            is_water = r_textures[texid].get('effect') == 'water'
+            if is_water != liquid_check:
                 continue
 
         vnum = face.ledge_num
