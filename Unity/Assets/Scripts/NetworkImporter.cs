@@ -442,12 +442,15 @@ public class NetworkImporter : MonoBehaviour {
                 Debug.Assert(countTriangles[i] > 0);
 
                 int alt_i = i;
-                if (org_textures != null && org_textures[i].anim_alt >= 0)
+                if (org_textures != null)
                 {
-                    /* hack: BSP models have normally just one frame, but Quake uses a second frame
-                     * to ask for the alternate version of the textures */
-                    alt_i = org_textures[i].anim_alt;
-                    got_alt_submaterials = true;
+                    if (org_textures[i].anim_alt >= 0)
+                    {
+                        /* hack: BSP models have normally just one frame, but Quake uses a second frame
+                         * to ask for the alternate version of the textures */
+                        alt_i = org_textures[i].anim_alt;
+                        got_alt_submaterials = true;
+                    }
                 }
                 alt_submaterials[submeshes[i]] = materials[alt_i];
             }
@@ -542,7 +545,6 @@ public class NetworkImporter : MonoBehaviour {
             while (subindex < framegroup.Length - 1 && framegroup[subindex].time <= timemod)
                 subindex++;
         }
-        is_dynamic |= model.m_alt_materials != null;
 
         Mesh mesh = framegroup[subindex].m_mesh;
         MeshRenderer rend = go.GetComponent<MeshRenderer>();
@@ -884,11 +886,16 @@ public class NetworkImporter : MonoBehaviour {
             A_combined);
     }
 
-    void AnimateTex(Material[] lst)
+    bool AnimateTex(Material[] lst)
     {
+        bool change = false;
         for (int i = 0; i < lst.Length; i++)
             if (anim_next.ContainsKey(lst[i]))
+            {
                 lst[i] = anim_next[lst[i]];
+                change = true;
+            }
+        return change;
     }
 
     void AnimateTextures()
@@ -901,6 +908,12 @@ public class NetworkImporter : MonoBehaviour {
             AnimateTex(model.m_materials);
             if (model.m_alt_materials != null)
                 AnimateTex(model.m_alt_materials);
+        }
+        foreach (MeshRenderer rend in worldObject.GetComponentsInChildren<MeshRenderer>())
+        {
+            Material[] lst = rend.sharedMaterials;
+            if (AnimateTex(lst))
+                rend.sharedMaterials = lst;
         }
         next_texture_animation += 0.2f;
         if (next_texture_animation < Time.time)
