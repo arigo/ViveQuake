@@ -150,6 +150,7 @@ public class NetworkImporter : MonoBehaviour {
     QLevel world;
     bool worldReady;
     Dictionary<string, QModel> models;
+    Dictionary<Material, Material> anim_next;
     WebSocket ws;
     volatile SnapEntry[] currentUpdateMessage;
     SnapEntry[] workUpdateMessage;
@@ -161,6 +162,7 @@ public class NetworkImporter : MonoBehaviour {
     Transform headset, playArea;
     Color uniformFadingColor;
     bool shooting;
+    float next_texture_animation = 0f;
 
 
     private void Start()
@@ -239,6 +241,11 @@ public class NetworkImporter : MonoBehaviour {
         Material[] mat = new Material[world.textures.Length];
         for (int i = 0; i < world.textures.Length; i++)
             mat[i] = ImportTexture(world.textures[i]);
+
+        anim_next = new Dictionary<Material, Material>();
+        for (int i = 0; i < world.textures.Length; i++)
+            if (world.textures[i].anim_next >= 0)
+                anim_next[mat[i]] = mat[world.textures[i].anim_next];
 
         foreach (var model in world.models)
         {
@@ -425,6 +432,7 @@ public class NetworkImporter : MonoBehaviour {
 
         Material[] submaterials = new Material[num_submeshes];
         Material[] alt_submaterials = new Material[num_submeshes];
+        bool got_alt_submaterials = false;
         int[][] triangles = new int[num_submeshes][];
         for (int i = 0; i < num_textures; i++)
             if (submeshes[i] >= 0)
@@ -439,11 +447,12 @@ public class NetworkImporter : MonoBehaviour {
                     /* hack: BSP models have normally just one frame, but Quake uses a second frame
                      * to ask for the alternate version of the textures */
                     alt_i = org_textures[i].anim_alt;
+                    got_alt_submaterials = true;
                 }
                 alt_submaterials[submeshes[i]] = materials[alt_i];
             }
         model.m_materials = submaterials;
-        model.m_alt_materials = alt_submaterials;
+        model.m_alt_materials = got_alt_submaterials ? alt_submaterials : null;
 
         for (int i = 0; i < model.frames.Length; i++)
         {
@@ -513,7 +522,7 @@ public class NetworkImporter : MonoBehaviour {
         Material[] mats = model.m_materials;
         if (frameindex >= model.frames.Length)
         {
-            if (frameindex == 1)
+            if (frameindex == 1 && model.m_alt_materials != null)
             {
                 mats = model.m_alt_materials;
                 frameindex = 0;
@@ -533,6 +542,7 @@ public class NetworkImporter : MonoBehaviour {
             while (subindex < framegroup.Length - 1 && framegroup[subindex].time <= timemod)
                 subindex++;
         }
+        is_dynamic |= model.m_alt_materials != null;
 
         Mesh mesh = framegroup[subindex].m_mesh;
         MeshRenderer rend = go.GetComponent<MeshRenderer>();
@@ -743,6 +753,7 @@ public class NetworkImporter : MonoBehaviour {
         if (currentUpdateMessage != null)
         {
             SendNetworkUpdates();
+            AnimateTextures();
 
             SnapEntry[] msg = Interlocked.Exchange<SnapEntry[]>(ref currentUpdateMessage, null);
             NetworkUpdateData(msg);
@@ -871,5 +882,28 @@ public class NetworkImporter : MonoBehaviour {
             c1.g * f1 + c2.g * f2,
             c1.b * f1 + c2.b * f2,
             A_combined);
+    }
+
+    void AnimateTex(Material[] lst)
+    {
+        for (int i = 0; i < lst.Length; i++)
+            if (anim_next.ContainsKey(lst[i]))
+                lst[i] = anim_next[lst[i]];
+    }
+
+    void AnimateTextures()
+    {
+        if (Time.time < next_texture_animation)
+            return;
+
+        foreach (QModel model in world.models)
+        {
+            AnimateTex(model.m_materials);
+            if (model.m_alt_materials != null)
+                AnimateTex(model.m_alt_materials);
+        }
+        next_texture_animation += 0.2f;
+        if (next_texture_animation < Time.time)
+            next_texture_animation = Time.time;
     }
 }
