@@ -97,6 +97,7 @@ ffibuilder.cdef("""
     void SV_ConnectClient(int clientnum);
     void PQuake_setorigin(int eindex, float x, float y, float z,
                           qboolean triggers);
+    void PQuake_push(int eindex, float dx, float dy, float dz);
 
     extern "Python" {
         void PQuake_StuffCmd(char *);
@@ -371,6 +372,7 @@ ffibuilder.set_source("_quake", r"""
     };
 
     extern void SV_ConnectClient (int clientnum);  /* sv_main.c */
+    extern trace_t SV_PushEntity (edict_t *ent, vec3_t push);  /* sv_phys.c */
 
     void PQuake_setorigin(int eindex, float x, float y, float z,
                           qboolean triggers)
@@ -380,6 +382,13 @@ ffibuilder.set_source("_quake", r"""
         e->v.origin[1] = y;
         e->v.origin[2] = z;
         SV_LinkEdict (e, triggers);
+    }
+
+    void PQuake_push(int eindex, float dx, float dy, float dz)
+    {
+        edict_t *e = EDICT_NUM(eindex);
+        vec3_t push = {dx, dy, dz};
+        SV_PushEntity(e, push);
     }
 """,
     sources='''

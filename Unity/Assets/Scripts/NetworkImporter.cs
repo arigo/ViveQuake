@@ -623,27 +623,34 @@ public class NetworkImporter : MonoBehaviour {
 
     void SendNetworkUpdates()
     {
-        Vector3 pos, origin, angles;
+        Vector3 pos, origin1, origin2, angles;
         string final;
+
+        /* origin1 is based on the headset */
+        pos = new Vector3(headset.position.x,
+                          playArea.position.y,
+                          headset.position.z);
+        origin1 = worldObject.transform.InverseTransformPoint(pos);
+        origin1.y += 32;
+
+        /* origin2 is based on the weapon */
+        pos = weaponController.transform.position;
+        origin2 = worldObject.transform.InverseTransformPoint(pos);
+
         if (shooting)
         {
             shooting = false;
-            pos = weaponController.transform.position;
-            origin = worldObject.transform.InverseTransformPoint(pos);
             angles = weaponController.transform.rotation.eulerAngles;
             final = " 1";
         }
         else
         {
-            pos = new Vector3(headset.position.x,
-                              playArea.position.y,
-                              headset.position.z);
-            origin = worldObject.transform.InverseTransformPoint(pos);
-            origin.y += 32;
             angles = headset.rotation.eulerAngles;
             final = "";
         }
-        ws.Send("tel " + origin.x + " " + origin.y + " " + origin.z + " " + angles.x + " " + angles.y + final);
+        ws.Send("tel " + origin1.x + " " + origin1.y + " " + origin1.z +
+                   " " + origin2.x + " " + origin2.y + " " + origin2.z +
+                   " " + angles.x + " " + angles.y + final);
     }
 
     public Light AddLight(Vector3 origin, float light, float light_factor, Transform parent=null)

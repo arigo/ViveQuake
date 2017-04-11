@@ -113,6 +113,9 @@ def PQuake_StuffCmd(s):
         screen_flash = 1
 screen_flash = 0
 
+def sqr(x):
+    return x * x
+
 # ------------------------------------------------------------
 
 
@@ -127,6 +130,7 @@ class QuakeServer(object):
         self.initialized = False
         self.client = None
         self.client_ed = None
+        self.prev_weapon_pos = (9999, 0, 0)
         for i in range(30):
             self.host_frame(0.1)
             if lib.progs != ffi.NULL:
@@ -167,12 +171,25 @@ class QuakeServer(object):
         lib.host_client = self.client
         lib.Cmd_ExecuteString(string, lib.src_client)
 
-    def move_client(self, x, y, z, ax, ay, fire=False):
-        if self.client_ed is not None:
-            lib.PQuake_setorigin(self.client_ed._index, x, y, z, True)
-            self.client_ed.angles = (ax, ay, 0)
-            self.client_ed.v_angle = (ax, ay, 0)
-            self.client_ed.button0 = int(fire)
+    def move_client(self, x1, y1, z1, x2, y2, z2, ax, ay, fire=0):
+        if self.client_ed is None:
+            return
+        self.client_ed.angles = (ax, ay, 0)
+        if fire:
+            lib.PQuake_setorigin(self.client_ed._index, x1, y1, z1, True)
+            lib.PQuake_setorigin(self.client_ed._index, x2, y2, z2, False)
+            # don't push anything when the fire button is down
+        else:
+            xp, yp, zp = self.prev_weapon_pos
+            if sqr(x2 - xp) + sqr(y2 - yp) + sqr(z2 - zp) > 400.0:
+                pass   # probably teleported, don't push anything
+            else:
+                lib.PQuake_setorigin(self.client_ed._index, xp, yp, zp, False)
+                lib.PQuake_push(self.client_ed._index, x2-xp, y2-yp, z2-zp)
+            lib.PQuake_setorigin(self.client_ed._index, x1, y1, z1, True)
+        self.prev_weapon_pos = x2, y2, z2
+        self.client_ed.v_angle = (ax, ay, 0)
+        self.client_ed.button0 = fire
 
     def host_frame(self, forced_delay=None):
         next_time = time.time()
