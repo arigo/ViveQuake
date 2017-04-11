@@ -21,6 +21,7 @@ public class QTexture
     public int width, height;
     public string data;
     public string effect;
+    public int anim_next=-1, anim_alt=-1;
 }
 
 [Serializable]
@@ -56,7 +57,7 @@ public class QModel
     public QTexture[] skins;
     public int flags;            // see EF_XXX here
 
-    public Material[] m_materials;
+    public Material[] m_materials, m_alt_materials;
 
     /* these are the EF_xxx coming from 'srv/model.h'. */
     public const int EF_ROCKET = 1;
@@ -241,7 +242,7 @@ public class NetworkImporter : MonoBehaviour {
 
         foreach (var model in world.models)
         {
-            ImportMeshes(model, mat);
+            ImportMeshes(model, mat, world.textures);
         }
 
         models = new Dictionary<string, QModel>();
@@ -405,7 +406,7 @@ public class NetworkImporter : MonoBehaviour {
         models[model_name] = model;
     }
 
-    void ImportMeshes(QModel model, Material[] materials)
+    void ImportMeshes(QModel model, Material[] materials, QTexture[] org_textures=null)
     {
         int num_textures = materials.Length;
 
@@ -423,6 +424,7 @@ public class NetworkImporter : MonoBehaviour {
         }
 
         Material[] submaterials = new Material[num_submeshes];
+        Material[] alt_submaterials = new Material[num_submeshes];
         int[][] triangles = new int[num_submeshes][];
         for (int i = 0; i < num_textures; i++)
             if (submeshes[i] >= 0)
@@ -430,8 +432,18 @@ public class NetworkImporter : MonoBehaviour {
                 submaterials[submeshes[i]] = materials[i];
                 triangles[submeshes[i]] = new int[countTriangles[i] * 3];
                 Debug.Assert(countTriangles[i] > 0);
+
+                int alt_i = i;
+                if (org_textures != null && org_textures[i].anim_alt >= 0)
+                {
+                    /* hack: BSP models have normally just one frame, but Quake uses a second frame
+                     * to ask for the alternate version of the textures */
+                    alt_i = org_textures[i].anim_alt;
+                }
+                alt_submaterials[submeshes[i]] = materials[alt_i];
             }
         model.m_materials = submaterials;
+        model.m_alt_materials = alt_submaterials;
 
         for (int i = 0; i < model.frames.Length; i++)
         {
@@ -498,6 +510,20 @@ public class NetworkImporter : MonoBehaviour {
 
     public bool LoadEntity(GameObject go, QModel model, int frameindex=0)
     {
+        Material[] mats = model.m_materials;
+        if (frameindex >= model.frames.Length)
+        {
+            if (frameindex == 1)
+            {
+                mats = model.m_alt_materials;
+                frameindex = 0;
+            }
+            else
+            {
+                Debug.LogWarning("frameindex out of range");
+                return false;
+            }
+        }
         QFrame[] framegroup = model.frames[frameindex].a;
         int subindex = 0;
         bool is_dynamic = framegroup.Length > 1;
@@ -512,12 +538,12 @@ public class NetworkImporter : MonoBehaviour {
         MeshRenderer rend = go.GetComponent<MeshRenderer>();
 
         Material[] cur_mats = rend.sharedMaterials;
-        bool diff = cur_mats.Length != model.m_materials.Length;
+        bool diff = cur_mats.Length != mats.Length;
         if (!diff)
             for (int i = 0; i < cur_mats.Length; i++)
-                diff = diff || (cur_mats[i] != model.m_materials[i]);
+                diff = diff || (cur_mats[i] != mats[i]);
         if (diff)
-            rend.sharedMaterials = model.m_materials;
+            rend.sharedMaterials = mats;
 
         go.GetComponent<MeshFilter>().sharedMesh = mesh;
         go.GetComponent<MeshCollider>().sharedMesh = mesh;
