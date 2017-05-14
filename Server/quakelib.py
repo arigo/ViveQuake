@@ -169,7 +169,7 @@ class QuakeServer(object):
 
     def cmd(self, string):
         lib.host_client = self.client
-        lib.Cmd_ExecuteString(string, lib.src_client)
+        lib.PQuake_Cmd_ExecuteString(string, lib.src_client)
 
     def move_client(self, x1, y1, z1, x2, y2, z2, ax, ay, fire=0):
         if self.client_ed is None:

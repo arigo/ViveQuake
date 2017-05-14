@@ -74,7 +74,7 @@ ffibuilder.cdef("""
                         // host_client will be valid during this state.
         src_command		// from the command buffer
     } cmd_source_t;
-    void Cmd_ExecuteString(char *text, cmd_source_t src);
+    void PQuake_Cmd_ExecuteString(char *text, cmd_source_t src);
 
     typedef struct qsocket_s { ...; } qsocket_t;
 
@@ -123,7 +123,9 @@ ffibuilder.set_source("_quake", r"""
     cvar_t chase_active = {"chase_active", "0"};
     unsigned short d_8to16table[256];
     int r_pixbytes = 1;
-    texture_t *r_notexture_mip;
+
+    static texture_t pq_notexture_mip = { .name = "notexture" };
+    texture_t *r_notexture_mip = &pq_notexture_mip;
 
     viddef_t vid = {
         .width = 640,
@@ -389,6 +391,12 @@ ffibuilder.set_source("_quake", r"""
         edict_t *e = EDICT_NUM(eindex);
         vec3_t push = {dx, dy, dz};
         SV_PushEntity(e, push);
+    }
+
+    void PQuake_Cmd_ExecuteString(char *text, cmd_source_t src)
+    {
+        sv_player = host_client->edict;
+        Cmd_ExecuteString(text, src);
     }
 """,
     sources='''
