@@ -1,10 +1,17 @@
+import os
 import qdata
 import array
 
 
 MAPDATA_VERSION = 19
 
-PAK0 = qdata.load('id1/pak0.pak')
+QDATA = [qdata.load('id1/pak0.pak')]
+if os.path.exists('id1/pak1.pak'):
+    QDATA.append(qdata.load('id1/pak1.pak'))
+
+CONTENT = {}
+for _qdata in QDATA:
+    CONTENT.update(_qdata.content)
 
 
 def map_vertex((x, y, z)):
@@ -23,7 +30,7 @@ def rev_map_vertex(x, z, y):
 
 
 def load_palette():
-    palettelmp = PAK0.content['gfx/palette.lmp']
+    palettelmp = CONTENT['gfx/palette.lmp']
     r_palette = []
     for i in range(256):
         rgb = palettelmp.rawdata[i*3:i*3+3]
@@ -35,7 +42,7 @@ def load_palette():
 
 
 def load_level(levelname):
-    bsp = PAK0.content['maps/%s.bsp' % (levelname,)]
+    bsp = CONTENT['maps/%s.bsp' % (levelname,)]
     result = {}
 
     r_textures = load_bsp_textures(bsp)
@@ -79,6 +86,9 @@ def load_bsp_textures(bsp):
 
     r_textures = []
     for texid, tex in enumerate(bsp.textures):
+        if tex.width > 8192 or tex.height > 8192:
+            r_textures.append(None)     # ???
+            continue
         assert tex.width == tex.mipmaps[0].w
         assert tex.height == tex.mipmaps[0].h
         r_texture = load_texture(tex.mipmaps[0])
@@ -295,7 +305,7 @@ def load_texture(mipmap):
 
 def load_model(modelname):
     assert modelname.endswith('.mdl') or modelname.endswith('.bsp')
-    mdl = PAK0.content[modelname]
+    mdl = CONTENT[modelname]
     if isinstance(mdl, qdata.QBsp):
         result = load_bsp_model(mdl, mdl.models[0])
         result['skins'] = load_bsp_textures(mdl)
@@ -366,7 +376,7 @@ if __name__ == '__main__':
     import pprint
     #m1 = load_model('progs/flame.mdl')
     #m1 = load_model('maps/b_nail1.bsp')
-    m1 = load_level('e1m1')
+    m1 = load_level('e2m3')
     #pprint.pprint(m1['lights'])
     #pprint.pprint(load_texture(m1['texturenames'][0]))
     #pprint.pprint(load_model('dog'))

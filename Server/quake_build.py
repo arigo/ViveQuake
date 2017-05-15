@@ -224,14 +224,16 @@ ffibuilder.set_source("_quake", r"""
 
     static void hack_pr_cmds(void);
 
+    static char BIG_MEM[16*1024*1024];
+
     void PQuake_Ready(int argc, char **argv)
     {
         static quakeparms_t    parms;
 
         hack_pr_cmds();
 
-        parms.memsize = 8*1024*1024;
-        parms.membase = malloc (parms.memsize);
+        parms.memsize = sizeof(BIG_MEM);
+        parms.membase = BIG_MEM;
         parms.basedir = ".";
 
         COM_InitArgv (argc, argv);
@@ -239,7 +241,8 @@ ffibuilder.set_source("_quake", r"""
         parms.argc = com_argc;
         parms.argv = com_argv;
 
-        printf ("Host_Init\n");
+        printf ("Host_Init: %d bytes at %p\n", (int)parms.memsize,
+                parms.membase);
         Host_Init (&parms);
 
         sv_aim.value = 9999;   /* turn off automatic aim correction */
