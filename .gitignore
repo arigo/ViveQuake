@@ -28,7 +28,7 @@ sysinfo.txt
 # Builds
 *.apk
 *.unitypackage
-/Unity/Assets/Lib/
+/Unity/Assets/SteamVR/
 /Unity/ViveQuake.exe
 /Unity/ViveQuake_Data/
 /Unity/player_win_development_*.pdb
@@ -36,6 +36,7 @@ sysinfo.txt
 *.pyc
 /Server/id1
 .*.swp
+*~
 /Server/_quake.c
 /Server/_quake.o
 /Server/_quake.so
