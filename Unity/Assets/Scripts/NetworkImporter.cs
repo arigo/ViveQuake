@@ -141,10 +141,10 @@ public class NetworkImporter : MonoBehaviour {
     public QuakeEntity entityPrefab;
     public Light lightPrefab;
     public ParticleSystem[] particleSystems;
+    public GameObject weaponController;
     public WaterScreenScript[] blurEffects;
     public Color[] blurColor;
     public Material uniformScreenTint;
-
 
     QHello level_info;
     QLevel world;
@@ -163,7 +163,6 @@ public class NetworkImporter : MonoBehaviour {
     Color uniformFadingColor;
     bool shooting;
     float next_texture_animation = 0f;
-    BaroqueUI.Controller weaponController;
 
 
     private void Start()
@@ -278,15 +277,9 @@ public class NetworkImporter : MonoBehaviour {
         /* disable all my children when the level is ready */
         for (int i = 0; i < transform.childCount; i++)
             transform.GetChild(i).gameObject.SetActive(false);
-
-        /*headset = VRTK.VRTK_SharedMethods.AddCameraFade();
+        headset = VRTK.VRTK_SharedMethods.AddCameraFade();
         playArea = VRTK.VRTK_DeviceFinder.PlayAreaTransform();
         playArea.position = worldObject.transform.TransformVector(level_info.start_pos);
-        */
-        headset = BaroqueUI.BaroqueUI.GetHeadTransform();
-        playArea = BaroqueUI.BaroqueUI.GetSteamVRManager().transform;
-        Vector3 destination = worldObject.transform.TransformVector(level_info.start_pos);
-        playArea.position = destination;
     }
 
     void AsyncDecompressMsg(byte[] data)
@@ -371,9 +364,6 @@ public class NetworkImporter : MonoBehaviour {
 
     Material ImportTexture(QTexture texinfo)
     {
-        if (texinfo.data == null)
-            return null;
-
         byte[] input_data = Convert.FromBase64String(texinfo.data);
         Material mat;
         Color32[] palette = world.palette;
@@ -411,9 +401,6 @@ public class NetworkImporter : MonoBehaviour {
 
     IEnumerable ImportModel(string model_name)
     {
-        if (model_name.EndsWith(".spr"))
-            yield break;   /* XXX */
-
         QModel model = new QModel();
         foreach (var x in DownloadJson("/model/" + model_name, model))
             yield return x;
@@ -579,8 +566,6 @@ public class NetworkImporter : MonoBehaviour {
     {
         if (weaponmodel != current_weapon_model)
         {
-            if (weaponController == null)
-                return;
             current_weapon_model = weaponmodel;
             if (weapon_entity == null)
             {
@@ -687,13 +672,8 @@ public class NetworkImporter : MonoBehaviour {
         origin1.y += 32;
 
         /* origin2 is based on the weapon */
-        if (weaponController == null)
-            origin2 = origin1;
-        else
-        {
-            pos = weaponController.transform.position;
-            origin2 = worldObject.transform.InverseTransformPoint(pos);
-        }
+        pos = weaponController.transform.position;
+        origin2 = worldObject.transform.InverseTransformPoint(pos);
 
         if (shooting)
         {
@@ -769,19 +749,8 @@ public class NetworkImporter : MonoBehaviour {
 
     private void Update()
     {
-        if (weaponController == null)
-        {
-            foreach (var ctrl in BaroqueUI.BaroqueUI.GetControllers())
-            {
-                if (ctrl.isActiveAndEnabled)
-                    weaponController = ctrl;
-            }
-        }
-        else
-        {
-            if (weaponController.triggerPressed)
-                shooting = true;
-        }
+        if (weaponController.GetComponentInChildren<VRTK.VRTK_ControllerEvents>().triggerClicked)
+            shooting = true;
 
         if (currentUpdateMessage != null)
         {
@@ -921,7 +890,7 @@ public class NetworkImporter : MonoBehaviour {
     {
         bool change = false;
         for (int i = 0; i < lst.Length; i++)
-            if (lst[i] != null && anim_next.ContainsKey(lst[i]))
+            if (anim_next.ContainsKey(lst[i]))
             {
                 lst[i] = anim_next[lst[i]];
                 change = true;
