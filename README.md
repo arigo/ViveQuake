@@ -16,10 +16,10 @@ which you must launch first, on a possibly different machine, not
 necessarily running Windows.  See the instructions in Server/README.
 
 
-Finally, the address that the Unity client connects to is hard-wired for now inside this
-script (it is not 127.0.0.1 because I run the server on another Linux machine):
-
-    Asserts\Scripts\NetworkImporter.cs
+Finally, the address that the Unity client connects to is hard-wired for
+now in the "Main Object" in the scene (fix Base Url, the first property
+in the inspector).  It is not 127.0.0.1 because I run the server on another
+Linux machine.
 
 
 License
