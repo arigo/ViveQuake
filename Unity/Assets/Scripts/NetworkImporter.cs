@@ -62,6 +62,7 @@ public class QModel
     /* these are the EF_xxx coming from 'srv/model.h'. */
     public const int EF_ROCKET = 1;
     public const int EF_ROTATE = 8;
+    public const int STATIC_IMAGE = 0x800;
 }
 
 [Serializable]
