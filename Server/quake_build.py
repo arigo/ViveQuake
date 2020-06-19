@@ -205,7 +205,7 @@ ffibuilder.set_source("_quake", r"""
     void Chase_Init(void) { }
     void Con_Init(void) { }
 
-    cvar_t	sv_aim;
+    extern cvar_t	sv_aim;
     cvar_t	cl_name = {"_cl_name", "player", true};
     cvar_t	cl_color = {"_cl_color", "0", true};
     client_static_t	cls;
